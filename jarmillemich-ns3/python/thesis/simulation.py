@@ -19,7 +19,9 @@ class SimulationContext():
         
         # Stats
         self.serverAppStats = []
+        self.clientAppStats = []
         self.serverAppsLastSample = []
+        self.clientAppsLastSample = []
         
     def _ref(self, item):
         self.refs.append(item)
@@ -198,6 +200,7 @@ class SimulationContext():
         
         # Set up a stats gathering event
         self.serverAppsLastSample = [0 for i in range(self.serverApps.GetN())]
+        self.clientAppsLastSample = [0 for i in range(self.clientApps.GetN())]
         self.monitorApps(resolution)
         
     def monitorApps(self, resolution = 5):
@@ -205,8 +208,13 @@ class SimulationContext():
         at = [self.serverApps.Get(i).GetTotalRx() for i in range(nApps)]
         delta = [at[i] - self.serverAppsLastSample[i] for i in range(nApps)]
         self.serverAppsLastSample = at
-        
         self.serverAppStats.append(delta)
+        
+        nApps = self.clientApps.GetN()
+        at = [self.clientApps.Get(i).GetTotalBytes() for i in range(nApps)]
+        delta = [at[i] - self.clientAppsLastSample[i] for i in range(nApps)]
+        self.clientAppsLastSample = at
+        self.clientAppStats.append(delta)
         
         #print('at %d got %s' % (ns.core.Simulator.Now().GetSeconds(), delta))
         #print(self.enbNodes.Get(0).GetObject(ns.mobility.MobilityModel.GetTypeId()).GetPosition())
@@ -218,7 +226,7 @@ class SimulationContext():
         self.clientApps.Stop(Seconds(float(dt)))
     
     def run(self, time):
-        from tqdm.notebook import tqdm
+        from tqdm.auto import tqdm
         pbar = tqdm(unit = ' sim seconds', total = int(time))
         
         # Keep track of time

@@ -69,13 +69,13 @@ def getInnerTangent(x0, y0, r0, x1, y1, r1):
     
 class LineSegment:
     def __init__(self, x0, y0, z0, x1, y1, z1):
-        self.x0 = x0
-        self.y0 = y0
-        self.z0 = z0
+        self.x0 = n(x0)
+        self.y0 = n(y0)
+        self.z0 = n(z0)
         
-        self.x1 = x1
-        self.y1 = y1
-        self.z1 = z1
+        self.x1 = n(x1)
+        self.y1 = n(y1)
+        self.z1 = n(z1)
         
         # Calculate some stats
         self.length = n(sqrt((x1 - x0)**2 + (y1 - y0)**2 + (z1 - z0)**2))
@@ -155,22 +155,56 @@ class LineSegment:
         return alpha
     
     def velocityThrustPower(self, craft, alpha):
-#         v = n(craft.straightVelocity(θ = self.theta, α=alpha, a=0))
-#         t = n(craft.straightThrust(θ = self.theta, α=alpha, a=0))
-#         p = n(craft.straightPower(θ = self.theta, α=alpha, a=0))
-        
-#         return v, t, p
+        # Take our average altitude/height
+        h = (self.z0 + self.z1) / 2
 
-        return craft.fastStraightVelocityThrustPower(θ = self.theta, α=alpha, a=0)
+        return craft.fastStraightVelocityThrustPower(θ = self.theta, α=alpha, a=0, h=h)
+
+    ## Experimental
+    def toPoses(self, times, t0, v, alpha):
+        import pandas as pd
+        import math
+        dt = self.length / v
+
+        dx = self.x1 - self.x0
+        dy = self.y1 - self.y0
+        dz = self.z1 - self.z0
+
+        # Apparently can't have fractional times, so do milliseconds
+        endTime = t0 + pd.offsets.Milli(int(dt * 1e3))
+
+        # We are assuming that the solar panels are in-line with the wings
+        # North is +Y
+        # Azimuth is degrees east of north
+        rad2deg = 180 / math.pi
+        azimuth = 90 - math.atan2(dy, dx) * rad2deg
+        length_horizontal = math.sqrt(dx*dx + dy*dy)
+        tilt = -(math.atan2(dz, length_horizontal) * rad2deg + alpha)
+        #print('heading', dx, dy, 'angle is', azimuth, 'going up', dz, alpha, 'for', tilt)
+
+        slices = times[t0:endTime]
+        #print(dt, len(slices), slices)
+        ret = pd.DataFrame({
+            'x': [self.x0 + dx * (t - t0).total_seconds() / dt for t in slices],
+            'y': [self.y0 + dy * (t - t0).total_seconds() / dt for t in slices],
+            'z': [self.z0 + dz * (t - t0).total_seconds() / dt for t in slices],
+            'v': [v for t in slices],
+            'tilt': [tilt for t in slices],
+            'azimuth': [azimuth % 360 for t in slices]
+
+        }, index=slices, dtype=float)
+
+        # Extra millisecond to avoid overlap
+        return endTime + pd.offsets.Milli(1), ret
         
 class ArcSegment:
     def __init__(self, x, y, z, r, theta, dtheta):
-        self.x = x
-        self.y = y
-        self.z = z
-        self.r = r
-        self.theta = theta.n()
-        self.dtheta = dtheta.n()
+        self.x = float(x)
+        self.y = float(y)
+        self.z = float(z)
+        self.r = float(r)
+        self.theta = float(theta)
+        self.dtheta = float(dtheta)
         
         # Calculate some stats
         self.length = n(abs(self.r * self.dtheta))
@@ -188,7 +222,7 @@ class ArcSegment:
         return line([
             (xdata[i], ydata[i], z)
             for i in range(n)
-        ])
+        ], **kwargs)
     
     def piece(self, t0, v):
         dt = self.length / v
@@ -244,12 +278,49 @@ class ArcSegment:
     
     # Gets the kinematic components of the flight given the craft and angle
     def velocityThrustPower(self, craft, alpha):
-#         v = n(craft.turningVelocity(r = self.r, α=alpha))
-#         t = n(craft.turningThrust(r = self.r, α=alpha))
-#         p = n(craft.turningPower(r = self.r, α=alpha))
-        
-#         return v, t, p
-        return craft.fastTurningVelocityThrustPower(self.r, alpha)
+        #
+        #         v = n(craft.turningVelocity(r = self.r, α=alpha))
+        #         t = n(craft.turningThrust(r = self.r, α=alpha))
+        #         p = n(craft.turningPower(r = self.r, α=alpha))
+                
+        #         return v, t, p
+        return craft.fastTurningVelocityThrustPower(self.r, alpha, self.z)
+
+    ## Experimental
+    def toPoses(self, times, t0, v, alpha):
+        import pandas as pd
+        import math
+        dt = self.length / v
+        rate = self.dtheta / dt
+
+        # Apparently can't have fractional times, so do milliseconds
+        endTime = t0 + pd.offsets.Milli(int(dt * 1e3))
+
+        # We are assuming that the solar panels are in-line with the wings
+        # North is +Y
+        # Azimuth is degrees east of north
+        rad2deg = 180 / math.pi
+        azimuth = 0
+        tilt = 0
+
+        slices = times[t0:endTime]
+        thetas = [rate * (t - t0).total_seconds() + self.theta for t in slices]
+
+        sign = 1 if self.dtheta > 0 else -1
+
+
+        ret = pd.DataFrame({
+            'x': [self.x + self.r * math.cos(theta) for theta in thetas],
+            'y': [self.y + self.r * math.sin(theta) for theta in thetas],
+            'z': [self.z for t in slices],
+            'v': [v for t in slices],
+            'tilt': [-alpha for t in slices],
+            # TODO this needs to be totally reworked to take into account our roll AND alpha
+            'azimuth': [(sign * (90 - math.atan2(math.cos(theta), -math.sin(theta)) * rad2deg)) % 360 for theta in thetas]
+        }, index=slices, dtype=float)
+
+        # Extra millisecond to avoid overlap
+        return endTime + pd.offsets.Milli(1), ret
     
 ##########################################
 ##### Helpers for building trajectory ####
@@ -306,8 +377,24 @@ def getTangentLineBetween(before, left, right, after):
 ##########################################
 ######### The actual trajectory ##########
 ##########################################
+
+class BaseTrajectory:
+    def __init__(self, pieces):
+        self.pieces = pieces
+
+    # Create a 3d rendering of the entire path (Sagemath)
+    def render(self, **kwargs):
+        return sum([p.render(**kwargs) for p in self.pieces])
     
-class Trajectory:
+    # Length of our entire path
+    def length(self):
+        return sum([p.length for p in self.pieces])
+
+    def toPoses(self):
+        t0 = 0
+
+
+class WaycircleTrajectory(BaseTrajectory):
     def __init__(self, wayCircles):
         if len(wayCircles) < 2:
             raise IndexError('You should probably have at least 2 wayCircles')
@@ -321,10 +408,11 @@ class Trajectory:
                     wayCircles[i][2] += 0.01
                     #raise TypeError('Sorry, adjacent radii must be distinct!')
         
-        self.buildTrajectory(wayCircles)
+        pieces = self.buildTrajectory(wayCircles)
+        super().__init__(pieces)
         
     def buildTrajectory(self, wayCircles):
-        self.pieces = []
+        pieces = []
         for i in range(len(wayCircles)):
             nextBefore = wayCircles[i - 2]
             before = wayCircles[i - 1]
@@ -360,13 +448,181 @@ class Trajectory:
 
             # Add our pieces to the list
             zNext = after[3]
-            self.pieces.append(LineSegment(left[0][0], left[0][1], z, left[1][0], left[1][1], zNext))
-            self.pieces.append(ArcSegment(x, y, zNext, r, theta0, theta1 - theta0))
+            pieces.append(LineSegment(left[0][0], left[0][1], z, left[1][0], left[1][1], zNext))
+            pieces.append(ArcSegment(x, y, zNext, r, theta0, theta1 - theta0))
         
-    # Create a 3d rendering of the entire path (Sagemath)
-    def render(self):
-        return sum([p.render() for p in self.pieces])
+        return pieces
+        
+
+class CircleTrajectory(BaseTrajectory):
+    '''Simple circular trajectory'''
+    def __init__(self, center, radius, phase = 0, reverse = False):
+        super().__init__([
+            ArcSegment(*center, radius, phase, (-1 if reverse else 1) * 2 * pi)
+        ])
+
+def ArcSegmentFromCenterAndPoints(center, left, right, flip = False):
+    from math import pi, atan2
+    # Assume that left and right are equidistant from center
+    radius = sqrt((center[0] - left[0])**2 + (center[1] - left[1])**2)
+    leftDelta = (
+        left[0] - center[0],
+        left[1] - center[1]
+    )
+    rightDelta = (
+        right[0] - center[0],
+        right[1] - center[1]
+    )
+    theta = atan2(leftDelta[1], leftDelta[0])
+    # Take small angle, and invert to get outside angle
+    dTheta =  angleBetween(leftDelta, rightDelta)
+    if dTheta < 0: dTheta += 2 * pi
+    if flip: dTheta -= 2 * pi
+    return ArcSegment(*center, radius, theta, dTheta)
+
+class BowtieTrajectory(BaseTrajectory):
+    '''Bowtie, or figure 8, trajectory'''
+    def __init__(self, center, lobeAngle = 0, lobeRadius = 50, lobeCenterDistance = 100):
+        from math import sin, cos
+
+        cx, cy, cz = center
+        
+        # Just two lobes for now
+        c1 = (
+            cx + lobeCenterDistance * cos(lobeAngle),
+            cy + lobeCenterDistance * sin(lobeAngle),
+            cz
+        )
+
+        c2 = (
+            cx - lobeCenterDistance * cos(lobeAngle),
+            cy - lobeCenterDistance * sin(lobeAngle),
+            cz
+        )
+
+        left, right = getInnerTangent(c1[0], c1[1], lobeRadius, c2[0], c2[1], lobeRadius)
+        super().__init__([
+            LineSegment(*left[1], cz, *left[0], cz),
+            ArcSegmentFromCenterAndPoints(c1, left[0], right[0], True),
+            LineSegment(*right[0], cz, *right[1], cz),
+            ArcSegmentFromCenterAndPoints(c2, right[1], left[1]),
+        ])
     
-    # Length of our entire path
-    def length(self):
-        return sum([p.length for p in self.pieces])
+
+
+class SimpleLadderTrajectory(BaseTrajectory):
+    ''' Bowtie, but climbing and then descending '''
+    def __init__(self, center, lobeAngle = 0, lobeRadius = 50, lobeCenterDistance = 100,
+                 stepHeight = 5, nSteps = 2):
+        
+        cx, cy, cz = center
+
+        c1 = (
+            cx + lobeCenterDistance * cos(lobeAngle),
+            cy + lobeCenterDistance * sin(lobeAngle),
+            cz
+        )
+
+        c2 = (
+            cx - lobeCenterDistance * cos(lobeAngle),
+            cy - lobeCenterDistance * sin(lobeAngle),
+            cz
+        )
+
+        left, right = getInnerTangent(c1[0], c1[1], lobeRadius, c2[0], c2[1], lobeRadius)
+    
+        pieces = []
+
+        for i in range(nSteps):
+            zl = cz + (2 * i + 0) * stepHeight
+            zm = cz + (2 * i + 1) * stepHeight
+            zr = cz + (2 * i + 2) * stepHeight
+            cl = (c1[0], c1[1], zm)
+            cr = (c2[0], c2[1], zr)
+
+            pieces.extend([
+                LineSegment(*left[1], zl, *left[0], zm),
+                ArcSegmentFromCenterAndPoints(cl, left[0], right[0], True),
+                LineSegment(*right[0], zm, *right[1], zr),
+                ArcSegmentFromCenterAndPoints(cr, right[1], left[1]),
+            ])
+
+        for i in range(nSteps-1, -1, -1):
+            zl = cz + (2 * i + 2) * stepHeight
+            zm = cz + (2 * i + 1) * stepHeight
+            zr = cz + (2 * i + 0) * stepHeight
+            cl = (c1[0], c1[1], zm)
+            cr = (c2[0], c2[1], zr)
+
+            pieces.extend([
+                LineSegment(*left[1], zl, *left[0], zm),
+                ArcSegmentFromCenterAndPoints(cl, left[0], right[0], True),
+                LineSegment(*right[0], zm, *right[1], zr),
+                ArcSegmentFromCenterAndPoints(cr, right[1], left[1]),
+            ])
+
+        super().__init__(pieces)
+
+class DTrajectory(BaseTrajectory):
+    # Like the letter "D", but with rounded corners
+    def __init__(self, center, radius, cornerRadius, angle = 0, reverse = False):
+        from math import sin, cos, atan2, pi, asin
+
+        cx, cy, cz = center
+
+        # Radius to centers of the rounded corners
+        innerRadius = radius - cornerRadius
+        # Angle between edge and line to centers of the rounded corners
+        innerTheta = asin(cornerRadius / innerRadius)
+
+        leftCenter = (
+            cx + innerRadius * cos(angle + pi - innerTheta),
+            cy + innerRadius * sin(angle + pi - innerTheta),
+            cz
+        )
+
+        rightCenter = (
+            cx + innerRadius * cos(angle + innerTheta),
+            cy + innerRadius * sin(angle + innerTheta),
+            cz
+        )
+
+        edgeRadius = sqrt(innerRadius**2 - cornerRadius**2)
+        leftEdgePoint = (
+            cx + edgeRadius * cos(angle + pi),
+            cy + edgeRadius * sin(angle + pi)
+        )
+
+        rightEdgePoint = (
+            cx + edgeRadius * cos(angle),
+            cy + edgeRadius * sin(angle)
+        )
+
+        leftOuterPoint = (
+            cx + radius * cos(angle + pi - innerTheta),
+            cy + radius * sin(angle + pi - innerTheta)
+        )
+
+        rightOuterPoint = (
+            cx + radius * cos(angle + innerTheta),
+            cy + radius * sin(angle + innerTheta)
+        )
+
+        print(innerTheta)
+
+        if reverse:
+            # CW
+            super().__init__([
+                LineSegment(*leftEdgePoint, cz, *rightEdgePoint, cz),
+                ArcSegmentFromCenterAndPoints(rightCenter, rightEdgePoint, rightOuterPoint),
+                ArcSegmentFromCenterAndPoints(center, rightOuterPoint, leftOuterPoint),
+                ArcSegmentFromCenterAndPoints(leftCenter, leftOuterPoint, leftEdgePoint)
+            ])
+        else:
+            # CCW
+            super().__init__([
+                LineSegment(*rightEdgePoint, cz, *leftEdgePoint, cz),
+                ArcSegmentFromCenterAndPoints(leftCenter, leftEdgePoint, leftOuterPoint, True),
+                ArcSegmentFromCenterAndPoints(center, leftOuterPoint, rightOuterPoint, True),
+                ArcSegmentFromCenterAndPoints(rightCenter, rightOuterPoint, rightEdgePoint, True),
+            ])

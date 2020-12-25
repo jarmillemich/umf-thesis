@@ -32,13 +32,13 @@ class Flight:
         # Compute some things
         self._calcVelocityThrustPower()
         self._calcTotalTime()
-        self._createPositionFunctions()
+        #self._createPositionFunctions()
         
         sigmaSquared = N0 + dB(B)
         self.B = B
         self.gamma = dB2W(B0 + xmitPower - sigmaSquared)
         
-        self._createBandwidthFunctions()
+        #self._createBandwidthFunctions()
         
     def _calcVelocityThrustPower(self):
         self.vtp = []
@@ -173,3 +173,32 @@ class Flight:
 
         return model
     
+    ## Experimental
+    def toPoses(self, times):
+        import pandas as pd
+        import numpy as np
+        
+        
+        t0 = times[0]
+
+        ret = []
+        idx = 0
+        endTime = times[-1]
+        print(endTime)
+
+        #for i in range(len(self._trajectory.pieces)):
+        while t0 < endTime:
+            piece = self._trajectory.pieces[idx]
+            alpha = self._alphas[idx]
+            #v, t, p = piece.velocityThrustPower(self._craft, alpha)
+            v, t, p = self.vtp[idx]
+
+            #print(t0, piece)
+            t0, posePiece = piece.toPoses(times, t0, v, alpha)
+            power = pd.Series([p for t in posePiece.index], dtype=float, index=posePiece.index)
+            posePiece.insert(0, 'power', power, True)
+            ret.append(posePiece)
+            idx += 1
+            idx %= len(self._trajectory.pieces)
+
+        return pd.concat(ret)

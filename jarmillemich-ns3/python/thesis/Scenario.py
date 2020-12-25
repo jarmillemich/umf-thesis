@@ -1,4 +1,5 @@
-from sage.all import vector, var, randrange, point, list_plot
+from sage.all import vector, var, point, list_plot
+from random import randrange
 import numpy as np
 
 class Scenario:
