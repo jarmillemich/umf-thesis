@@ -85,6 +85,15 @@ class LineSegment:
         
     def render(self, **kwargs):
         return line(((self.x0, self.y0, self.z0), (self.x1, self.y1, self.z1)), **kwargs)
+
+    def renderTop(self, **kwargs):
+        return line(((self.x0, self.y0), (self.x1, self.y1)), **kwargs)
+
+    def renderSide(self, xy = 'x', **kwargs):
+        if xy == 'x':
+            return line(((self.x0, self.z0), (self.x1, self.z1)), **kwargs)
+        else:
+            return line(((self.y0, self.z0), (self.y1, self.z1)), **kwargs)
     
     def piece(self, t0, v):
         dt = self.length / v
@@ -188,6 +197,7 @@ class LineSegment:
             'x': [self.x0 + dx * (t - t0).total_seconds() / dt for t in slices],
             'y': [self.y0 + dy * (t - t0).total_seconds() / dt for t in slices],
             'z': [self.z0 + dz * (t - t0).total_seconds() / dt for t in slices],
+            #'z': [1000 for t in slices],
             'v': [v for t in slices],
             'tilt': [tilt for t in slices],
             'azimuth': [azimuth % 360 for t in slices]
@@ -216,13 +226,35 @@ class ArcSegment:
         x, y, r, s1, s2, z = self.x, self.y, self.r, self.theta, self.theta + self.dtheta, self.z
         n = 50
         dt = (s2 - s1) / n
-        xdata = [x + r * cos(s1 + t * dt) for t in range(n)]
-        ydata = [y + r * sin(s1 + t * dt) for t in range(n)]
+        xdata = [x + r * cos(s1 + t * dt) for t in range(n + 1)]
+        ydata = [y + r * sin(s1 + t * dt) for t in range(n + 1)]
 
         return line([
             (xdata[i], ydata[i], z)
             for i in range(n)
         ], **kwargs)
+
+    def renderTop(self, **kwargs):
+        return arc((self.x, self.y), self.r, self.r, 0, (self.theta, self.theta + self.dtheta), **kwargs)
+
+    def renderSide(self, xy = 'x', **kwargs):
+        # TODO actually do the circle projections
+        x, y, r, s1, s2, z = self.x, self.y, self.r, self.theta, self.theta + self.dtheta, self.z
+        n = 50
+        dt = (s2 - s1) / n
+        xdata = [x + r * cos(s1 + t * dt) for t in range(n + 1)]
+        ydata = [y + r * sin(s1 + t * dt) for t in range(n + 1)]
+
+        if xy == 'x':
+            return line([
+                (xdata[i], z)
+                for i in range(n)
+            ], **kwargs)
+        else:
+            return line([
+                (ydata[i], z)
+                for i in range(n)
+            ], **kwargs)
     
     def piece(self, t0, v):
         dt = self.length / v
@@ -300,6 +332,7 @@ class ArcSegment:
         # North is +Y
         # Azimuth is degrees east of north
         rad2deg = 180 / math.pi
+        deg2rad = math.pi / 180
         azimuth = 0
         tilt = 0
 
@@ -313,6 +346,7 @@ class ArcSegment:
             'x': [self.x + self.r * math.cos(theta) for theta in thetas],
             'y': [self.y + self.r * math.sin(theta) for theta in thetas],
             'z': [self.z for t in slices],
+            #'z': [1000 for t in slices],
             'v': [v for t in slices],
             'tilt': [-alpha for t in slices],
             # TODO this needs to be totally reworked to take into account our roll AND alpha
@@ -385,6 +419,13 @@ class BaseTrajectory:
     # Create a 3d rendering of the entire path (Sagemath)
     def render(self, **kwargs):
         return sum([p.render(**kwargs) for p in self.pieces])
+
+    # 2d renderings
+    def renderTop(self, **kwargs):
+        return sum([p.renderTop(**kwargs) for p in self.pieces])
+
+    def renderSide(self, **kwargs):
+        return sum([p.renderSide(**kwargs) for p in self.pieces])
     
     # Length of our entire path
     def length(self):
@@ -513,8 +554,13 @@ class BowtieTrajectory(BaseTrajectory):
 class SimpleLadderTrajectory(BaseTrajectory):
     ''' Bowtie, but climbing and then descending '''
     def __init__(self, center, lobeAngle = 0, lobeRadius = 50, lobeCenterDistance = 100,
-                 stepHeight = 5, nSteps = 2):
+                 stepHeight = 5, nSteps = 2, nStepsDown = None):
         
+
+        if nStepsDown is None:
+            nStepsDown = nSteps
+
+
         cx, cy, cz = center
 
         c1 = (
@@ -533,10 +579,17 @@ class SimpleLadderTrajectory(BaseTrajectory):
     
         pieces = []
 
+        ladderHeight = stepHeight * max(nSteps, nStepsDown)
+
+        stepUpHeight = ladderHeight / nSteps
+        stepDownHeight = ladderHeight / nStepsDown
+
         for i in range(nSteps):
-            zl = cz + (2 * i + 0) * stepHeight
-            zm = cz + (2 * i + 1) * stepHeight
-            zr = cz + (2 * i + 2) * stepHeight
+            # Height at bottom, mid/other side, and step above for this step, respectively
+            zl = cz + (2 * i + 0) * stepUpHeight
+            zm = cz + (2 * i + 1) * stepUpHeight
+            zr = cz + (2 * i + 2) * stepUpHeight
+            # Centers for the two sides of this step
             cl = (c1[0], c1[1], zm)
             cr = (c2[0], c2[1], zr)
 
@@ -547,10 +600,10 @@ class SimpleLadderTrajectory(BaseTrajectory):
                 ArcSegmentFromCenterAndPoints(cr, right[1], left[1]),
             ])
 
-        for i in range(nSteps-1, -1, -1):
-            zl = cz + (2 * i + 2) * stepHeight
-            zm = cz + (2 * i + 1) * stepHeight
-            zr = cz + (2 * i + 0) * stepHeight
+        for i in range(nStepsDown-1, -1, -1):
+            zl = cz + (2 * i + 2) * stepDownHeight
+            zm = cz + (2 * i + 1) * stepDownHeight
+            zr = cz + (2 * i + 0) * stepDownHeight
             cl = (c1[0], c1[1], zm)
             cr = (c2[0], c2[1], zr)
 
@@ -562,6 +615,20 @@ class SimpleLadderTrajectory(BaseTrajectory):
             ])
 
         super().__init__(pieces)
+
+    def render(self, cutoff = -1, **kwargs):
+        return sum([p.render(**kwargs) for p in self.pieces[:cutoff]])
+
+    def renderSideFancy(self, cutoff, **kwargs):
+        ret = [piece.renderSide(**kwargs) for piece in self.pieces[:cutoff]]
+
+        ret.append(self.pieces[cutoff].renderSide(linestyle='--', **kwargs))
+
+        # Eh
+        ret.append(self.pieces[-1].renderSide(**kwargs))
+
+        return sum(ret)
+
 
 class DTrajectory(BaseTrajectory):
     # Like the letter "D", but with rounded corners

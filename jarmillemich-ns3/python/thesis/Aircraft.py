@@ -116,9 +116,12 @@ class Aircraft:
         
         q = airDensity(h=h) * v**2 / 2
         self.L = (self.ClFit * q * self._wingSurface).function(α,v,h)
-        self.D_p = (self.CdFit * q * self._wingSurface).function(α,v,h)
+        self.D_w = (self.CdFit * q * self._wingSurface).function(α,v,h)
+        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
+        re = 10 * self._chord / 1.4207e-5
+        self.D_p = 0.074 * re ** -0.2 * self._wingSurface * q
         self.D_i = (self.L**2 / (pi * self._e0 * self._aspectRatio * self._wingSurface * q)).function(α,v,h)
-        self.D = (self.D_p + self.D_i).function(α,v,h)
+        self.D = (self.D_p + self.D_i + self.D_w).function(α,v,h)
     
     ##########################################
     ########### Common functions #############
@@ -126,7 +129,11 @@ class Aircraft:
     def powerFunctions(self, α = var('α')):
         # Coefficients dependent on angle of attack
         L0 = self.ClFit(α=α)
-        D0 = self.CdFit(α=α) + self.ClFit(α=α)**2 / self.k2
+        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
+        re = 10 * self._chord / 1.4207e-5
+        D0 = self.CdFit(α=α) + self.ClFit(α=α)**2 / self.k2 + 0.074 * re**-0.2
+
+        print(D0, re, 0.074 * re**-0.2)
         
         return L0, D0
     
@@ -260,8 +267,10 @@ class Aircraft:
         
 #         L0, D0 = self.powerFunctions(α)
 #         L0, D0 = L0.n(), D0.n()
+        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
+        re = 10 * self._chord / 1.4207e-5
         L0 = self.ClFit(α=α).n()
-        D0 = self.CdFit(α=α).n() + L0**2 / self.k2
+        D0 = self.CdFit(α=α).n() + L0**2 / self.k2 + 0.074 * re**-0.2
         
         # Items to compute our velocity function
         cotanThetaAlpha = (1 / tan(θ + α * deg2rad))
@@ -326,8 +335,10 @@ class Aircraft:
 
         #         L0, D0 = self.powerFunctions(α)
         #         L0, D0 = L0.n(), D0.n()
+        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
+        re = 10 * self._chord / 1.4207e-5
         L0 = self.ClFit(α=α).n()
-        D0 = self.CdFit(α=α).n() + L0**2 / self.k2
+        D0 = self.CdFit(α=α).n() + L0**2 / self.k2 + 0.074 * re**-0.2
         
         # Roll
         denom = r * self.k1(h=h) * (D0 * tan(α * deg2rad) - L0)

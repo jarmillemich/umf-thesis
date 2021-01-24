@@ -1,0 +1,6 @@
+.vscode/**
+*.pdf
+*.svg
+*.h5
+*.gzip
+*.swp

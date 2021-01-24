@@ -1,0 +1,41 @@
+Idealism time!
+
+So we probably want two layers:
+
+MixedArcMobilityModel : MobilityModel
+  // Whether we loop after reaching the end?
+  "Cycle": BooleanValue (default true)
+
+  // A horizontal arc segment
+  // Probably can just call AddNonLevelArcSegment?
+  .AddArcSegment(Vector center, double radius, double startTheta, double deltaTheta, double v)
+  // A horizontal-ish arc segment that can also ascend/descend
+  // abs(deltaTheta) can be greater than Tau, to do some loops
+  .AddNonLevelArcSegment(Vector center, double radius, double startTheta, double deltaTheta, double dZ, double v)
+  // A straight line from point start to point end, need not be level
+  .AddLineSegment(Vector start, Vector end, double v)
+  // Calculate stuff for the cycle, MUST be called exactly once before starting the sim
+  .Finalize()
+
+  // So, future stuff...
+  // If we end up doing online stuff and want to have "detours"
+  // How will that work?
+  // Probably we'd want another mobility model like HierarchicalMobilityModel
+  // But it wraps the inner one and patches the timestamps around?
+
+FixedWingMobilityHelper
+  "Gravity": DoubleValue (default 9.8 m/s^2)
+  "AirDensity": DoubleValue (default 1.225 kg/m^3, ASL density)
+  "Craft.Mass": DoubleValue (mass in kg, default 10)
+  "Craft.Wing.Chord": DoubleValue (meters, default 1)
+  "Craft.Wing.Span": DoubleValue (meters, default 10)
+  "Craft.Wing.Efficiency": DoubleValue (Oswald efficiency, default 0.8)
+  // Can just call AddNonLevelWaycircle
+  .AddWaycircle(Vector center, double radius, double alpha, double alphaAfter)
+  // Waycircle but we go up/down
+  .AddNonLevelWaycircle(Vector center, double radius, double dZ, double alpha, double alphaAfter)
+  // Waycircle but we go up/down and loop some number of times before proceeding
+  .AddNonLevelLoopingWaycircle(Vector center, double radius, double dZ, int extraLoops, double alpha, double alphaAfter)
+
+  // Generate a MixedArcMobilityModel and install on this node
+  .Install(Ptr<Node> node)

@@ -204,42 +204,70 @@ class Judge:
         print()
         print()
         
-    def displayFlightPower(self, flight, bat_Wh_cap, P_payload, start = '2020-07-01T08', end = '2020-07-03T08'):
+    def displayFlightPower(self, flight, bat_Wh_cap, P_payload, start = '2020-07-01T08', end = '2020-07-03T08', legend = False, savename=None):
+        from matplotlib.dates import DateFormatter
         print(' Power info')
         print('=' * 80)
         
         times = pd.date_range(start=start, end=end, freq='30S', tz='America/Detroit')
         poses = flight.toPoses(times.to_series())
         
-        # TODO this is an arbitrary location near UMF
-        solar = flight._craft.calcSolarPower(poses, 43, -84)
+        # An arbitrary location near the top of NC/TN, USA
+        solar = flight._craft.calcSolarPower(poses, 36, -84)
+        print('sum solar influx:', solar.sum())
         battery = flight._craft.calcBatteryCharge(poses, solar, bat_Wh_cap, constant_draw = P_payload)
 
-        fix, ax1 = plt.subplots(figsize=(18,10))
-        ax1.set_xlabel('local time')
+        fig, ax1 = plt.subplots()
+        
+        # Apparently this gets overwritten by the other, and is pointless
+        #ax1.xaxis.set_major_formatter(DateFormatter('%H%M', tz='America/Detroit'))
+        ax1.set_xlabel('Local Time [h]')
         ax1.set_ylabel('Power [W]')
-        ax1.set_ylim(bottom = 0, top = solar.max() * 1.1)
+        #ax1.set_ylim(bottom = 0, top = solar.max() * 1.1)
+        ax1.set_ylim(bottom = 0, top = 3500)
 
-        solar.plot(color='tab:orange')
-        poses.power.plot(color='tab:blue')
-        (poses.power + P_payload).plot(color='tab:cyan')
+        #solar.plot(color='tab:orange')
+        ax1.plot(solar, color='orange')
+        # NB Smoothing is for ladder trajectory, as the relatively rapid switches make it very hard to read
+        poses.power.rolling(100, center=True).mean().plot(color='red', linestyle=(0,(2,4)))
+        (poses.power + P_payload).rolling(64, center=True).mean().plot(color='darkgreen', linestyle=(0, (8,2)))
+
+        # XXX Thunking something out, not needed
+        totPower = (poses.power + P_payload).rolling(64, center=True).mean()
+        print('Power range is %.2f to %.2f W' % (totPower.min(), totPower.max()))
 
         # Gravitational potential energy in Wh
+        # TODO others apply a factor to this, as it is not a 100% equivalence to battery storage
         base_height = poses['z'].min()
         E_g = (poses.z - base_height) * 9.8 * flight._craft._mass / 3600
 
+        if legend: plt.legend(['Solar', 'Propulsion', 'Total'], loc='upper center', bbox_to_anchor=(0.4, 1))
+
+
         ax2 = ax1.twinx()
-        ax2.set_ylabel('Energy [Wh]', color='tab:red')
-        ax2.tick_params(axis='y', labelcolor='tab:red')
-        ax2.set_ylim(bottom = 0, top = (battery + E_g).max() * 1.1)
-        battery.plot(color='tab:red')
+        ax2.xaxis.set_major_formatter(DateFormatter('%H:%M', tz=times.tz))
+        ax2.set_ylabel('Stored Energy [Wh]', color='blue')
+        ax2.tick_params(axis='y', labelcolor='blue')
+        #ax2.set_ylim(bottom = 0, top = (battery + E_g).max() * 1.3)
+        ax2.set_ylim(0, 15000)
+        #battery.plot(color='tab:red')
+        ax2.plot(battery, color='blue', linestyle='-', marker='p', markevery=250, markersize=8)
         if poses['z'].max() - base_height > 10:
             # Show potential energy as well, if we have a reasonable amount
-            (battery + E_g).plot(color='tab:cyan')
+            #(battery + E_g).plot(color='tab:cyan')
+            ax2.fill_between(battery.index, battery, battery + E_g, color='blue', alpha=0.2, hatch='/')
+
+        if legend: plt.legend(['Battery', 'Altitude'])
 
         # Note, we take after 6 hours to get past the initial charge
         mSocStart = pd.to_datetime(start) + pd.offsets.Hour(6)
         print('mSoc = %.2f%%' % (battery[mSocStart:].min() / bat_Wh_cap * 100))
+
+        # Tidy up x axis margins
+        plt.autoscale(enable=True, axis='x', tight=True)
+
+        if savename is not None:
+            plt.savefig(savename, bbox_inches = 'tight')
 
         print()
         print()
@@ -268,7 +296,7 @@ class Judge:
 
         agg = pd.DataFrame(rates)
 
-        fix, ax1 = plt.subplots(figsize=(18,10))
+        fix, ax1 = plt.subplots()
         ax1.set_xlabel('local time')
         ax1.set_ylabel('Altitude')
         ax1.set_ylim(bottom = 0, top = poses.z.max() * 1.1)
@@ -284,7 +312,7 @@ class Judge:
         agg.max(1).rolling(window=int(10), center=True).mean().plot()
 
         # Eh
-        plt.figure(figsize=(18,10))
+        plt.figure()
         poses.v.round(1).plot()
 
         # Gimpy 4 hour rolling mean?
@@ -292,7 +320,7 @@ class Judge:
 
         #return agg
 
-    def runNS3Simulation(self, flight, start = '2020-07-01T08', end = None, burstArrivals = 1, burstLength = 1):
+    def runNS3Simulation(self, flight, start = '2020-07-01T08', end = None, burstArrivals = 1, burstLength = 1, upload = True, download = False):
         # By default, run a single cycle
         if end is None:
             end = pd.to_datetime(start) + pd.offsets.Second(int(flight.cycleTime))
@@ -314,6 +342,7 @@ class Judge:
                 sim.addUser(*user)
             sim._finalizeNodes()
             
+            # For WS paper, upload
             for idx in range(len(self._scene.users)):
                 # Create traffic generators
                 ueNode = sim.ueNodes.Get(idx)
@@ -333,6 +362,28 @@ class Judge:
                 h.SetAttribute("MeanBurstTimeLength", StringValue("ns3::ConstantRandomVariable[Constant=%f]" % burstLength))
                 h.SetAttribute("BurstIntensity", StringValue("1Mb/s"))
                 app = h.Install(ueNode)
+                sim.clientApps.Add(app)
+
+            # We do a brief look at the download direction too
+            for idx in range(len(self._scene.users)):
+                # Create traffic generators
+                ueNode = sim.ueNodes.Get(idx)
+                ueNetDev = sim.ueLteDevs.Get(idx)
+                ueIp = sim.ueIpIface.GetAddress(idx)
+                
+                sinkAddr = ns.network.InetSocketAddress(ueIp, 8000 + idx)
+                packetSinkHelper = ns.applications.PacketSinkHelper("ns3::UdpSocketFactory", sinkAddr)
+                sim.serverApps.Add(packetSinkHelper.Install(ueNode))
+                
+                MbpsTarget = 1
+
+                h = ns.applications.PPBPHelper("ns3::UdpSocketFactory", sinkAddr)
+                # Supposed to be how many active "bursts" we have, but appears to be how many started per second
+                h.SetAttribute("MeanBurstArrivals", StringValue("ns3::ConstantRandomVariable[Constant=%f]" % burstArrivals))
+                # Duration in seconds of each burst
+                h.SetAttribute("MeanBurstTimeLength", StringValue("ns3::ConstantRandomVariable[Constant=%f]" % burstLength))
+                h.SetAttribute("BurstIntensity", StringValue("1Mb/s"))
+                app = h.Install(sim.remoteHost)
                 sim.clientApps.Add(app)
                 
             # Set up traces

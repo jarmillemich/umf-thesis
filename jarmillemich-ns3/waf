@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+pushd ../ns-3-dev
+./waf $*
+popd
