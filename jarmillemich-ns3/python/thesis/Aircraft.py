@@ -38,7 +38,7 @@ def makeFit(inFunc):
     # We have to sort of make a function out of Cl and Cd...
     # It only has to be good in the domain so a regression should be fine
     a, b, c, d, e, f, alpha = var('a, b, c, d, e, f, α')
-    model = a * alpha**4 + b * alpha**5 + c * alpha**3 + d * alpha**2 + e * alpha + f
+    model = a * alpha**5 + b * alpha**4 + c * alpha**3 + d * alpha**2 + e * alpha + f
     data = [(i, inFunc(i)) for i in xsrange(-8,12,0.1)]
     
     sol = find_fit(data, model, parameters=[a,b,c,d,e,f], variables=[alpha])
@@ -84,11 +84,14 @@ class Aircraft:
         # Surface area (square meters)
         self._wingSurface = wingSpan * chord
         
-        self.loadWing(airfoil)
-        
         # Some constants we pull out of our equations
         self.k1 = airDensity * self._wingSurface / 2
         self.k2 = pi * self._e0 * self._aspectRatio
+
+        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
+        self._re = 10 * self._chord / 1.4207e-5
+
+        self.loadWing(airfoil)
 
         # Load power parameters
         self._efficiency = {
@@ -115,27 +118,30 @@ class Aircraft:
         α, v, h = var('α, v, h')
         
         q = airDensity(h=h) * v**2 / 2
+        # Lift force
         self.L = (self.ClFit * q * self._wingSurface).function(α,v,h)
-        self.D_w = (self.CdFit * q * self._wingSurface).function(α,v,h)
-        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
-        re = 10 * self._chord / 1.4207e-5
-        self.D_p = 0.074 * re ** -0.2 * self._wingSurface * q
-        self.D_i = (self.L**2 / (pi * self._e0 * self._aspectRatio * self._wingSurface * q)).function(α,v,h)
-        self.D = (self.D_p + self.D_i + self.D_w).function(α,v,h)
+
+        # Coefficients of drag
+        # Wing
+        CDW = self.CdFit
+        # Parasitic
+        CDP = 0.074 * self._re ** -0.2
+        # Induced
+        CDI = self.ClFit ** 2 / self.k2
+        # Sum
+        CDA = CDW + CDP + CDI
+        
+        # Drag force
+        self.D = (CDA * self._wingSurface * q).function(α,v,h)
+
+
+        # Our L1 and D1 variables
+        self.L1 = (self.k1 * self.ClFit).function(α,v,h)
+        self.D1 = (self.k1 * CDA).function(α,v,h)
     
     ##########################################
     ########### Common functions #############
     ##########################################
-    def powerFunctions(self, α = var('α')):
-        # Coefficients dependent on angle of attack
-        L0 = self.ClFit(α=α)
-        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
-        re = 10 * self._chord / 1.4207e-5
-        D0 = self.CdFit(α=α) + self.ClFit(α=α)**2 / self.k2 + 0.074 * re**-0.2
-
-        print(D0, re, 0.074 * re**-0.2)
-        
-        return L0, D0
     
     # Calculate the solar irradiance values for the provided poses
     # poses should be a pd.Dataframe, indexed by Datetime, with both 'tilt', 'azimuth', and 'z' (altitude AMSL) Series
@@ -214,79 +220,27 @@ class Aircraft:
     ########### Straight path stuff ##########
     ##########################################
     
-    # Needed velocity for different ascent/descent angles and angles of attack
-    # Assuming thrust vector is in-line with angle of attack
-    # theta is in radians, alpha is in degrees (TODO make consistent?)
-    # See (some appendix) for the derivation
-    def straightVelocity(self, θ = var('θ'), α = var('α'), a = var('a'), h = 1000):
-        # Net force
-        F = self._mass * a
-        
-        L0, D0 = self.powerFunctions(α)
-
-        k1 = self.k1(h=h)
-        
-        # Items to compute our velocity function
-        num = cot(θ + α * deg2rad) * (F * sin(θ) + self._mass * g(h=h)) - F * cos(θ)
-        den = k1 * ( \
-            L0 * sin(θ) + \
-            D0 * cos(θ) + \
-            cot(θ + α * deg2rad) * ( \
-                L0 * cos(θ) - D0 * sin(θ) \
-            ) \
-        )
-
-        if den == 0: return 0
-
-        # The final velocity function
-        return sqrt(num / den)
-        
-    # Thrust needed for some θ, α, a
-    def straightThrust(self, θ = var('θ'), α = var('α'), a = var('a'), h = 1000):
-        # Net force
-        F = self._mass * a
-        v = self.straightVelocity(θ, α, a, h)
-        thr = (F * cos(θ) + self.L(α=α, v=v, h=h) * sin(θ) + self.D(α=α, v=v, h=h) * cos(θ)) / cos(θ + α * deg2rad)
-        # TODO fix this elsewhere so it doesn't happen (problem constraint? input formulation?)
-        if thr < 0:
-            #print('Warning, got a negative thrust')
-            # In "reality" we might pitch up more and glide at 0 power and conserve velocity
-            return 0
-        return thr
-    
-    # Power use for some θ, α, a
-    def straightPower(self, θ = var('θ'), α = var('α'), a = var('a'), h = 1000):
-        return self.straightVelocity(θ, α, a, h) * self.straightThrust(θ, α, a, h)
-    
-    def fastStraightVelocityThrustPower(self, θ, α, a, h):
+    def fastStraightVelocityThrustPower(self, θ, α, h):
         # Just use regular mathematical functions
         from math import sin, cos, tan, sqrt
         
-        # Net force
-        F = self._mass * a
         
-#         L0, D0 = self.powerFunctions(α)
-#         L0, D0 = L0.n(), D0.n()
-        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
-        re = 10 * self._chord / 1.4207e-5
-        L0 = self.ClFit(α=α).n()
-        D0 = self.CdFit(α=α).n() + L0**2 / self.k2 + 0.074 * re**-0.2
+        L1 = self.L1(α=α).n()
+        D1 = self.D1(α=α).n()
         
         # Items to compute our velocity function
         cotanThetaAlpha = (1 / tan(θ + α * deg2rad))
-        num = cotanThetaAlpha * (F * sin(θ) + self._mass * g(h=h)) - F * cos(θ)
-        den = self.k1(h=h) * ( \
-            L0 * sin(θ) + \
-            D0 * cos(θ) + \
-            cotanThetaAlpha * ( \
-                L0 * cos(θ) - D0 * sin(θ) \
-            ) \
-        )
+        num = self._mass * g(h=h) * cotanThetaAlpha
+        den = L1 * sin(θ) + \
+              D1 * cos(θ) + \
+              cotanThetaAlpha * ( \
+                  L1 * cos(θ) - D1 * sin(θ) \
+              )
         
         v = sqrt(num / den)
         
         # Thrust function
-        thr = (F * cos(θ) + self.L(α=α, v=v, h=h) * sin(θ) + self.D(α=α, v=v, h=h) * cos(θ)) / cos(θ + α * deg2rad)
+        thr = (self.L(α=α, v=v, h=h).n() * sin(θ) + self.D(α=α, v=v, h=h).n() * cos(θ)) / cos(θ + α * deg2rad)
         
         # Power function
         p = v * thr
@@ -296,63 +250,28 @@ class Aircraft:
     ##########################################
     ########### Arced path stuff #############
     ##########################################
-    
-    # The roll angle needed for some radius given and angle of attack
-    def turningRoll(self, r = var('r'), α = var('α'), h = 1000):
-        L0, D0 = self.powerFunctions(α)
         
-        k1 = self.k1(h=h)
-        denom = r * k1 * (D0(α=α) * tan(α * deg2rad) - L0(α=α))
-        phi = asin(self._mass / denom)
-        
-        return phi
-    
-    # Needed velocity for turning
-    # Assuming constant velocity, altitude, radius
-    def turningVelocity(self, r = var('r'), α = var('α'), h = 1000):
-        roll = self.turningRoll(r=r, α=α, h=h)
-        L0, D0 = self.powerFunctions(α)
-        
-        denomPart = D0(α=α) * tan(α * deg2rad) * sin(roll) + L0(α=α) * cos(roll)
-        
-        k1 = self.k1(h=h)
-        vSquared = self._mass * g(h=h) / (k1 * denomPart)
-        
-        return sqrt(vSquared)
-    
-    # Needed thrust for turning
-    def turningThrust(self, r = var('r'), α = var('α'), h = 1000):
-        L0, D0 = self.powerFunctions(α)
-        k1 = self.k1(h=h)
-        return k1 * self.turningVelocity(r, α, h) ** 2 * D0(α=α) / cos(α * deg2rad)
-    
-    def turningPower(self, r = var('r'), α = var('α'), h = 1000):
-        return self.turningVelocity(r, α, h) * self.turningThrust(r, α, h)
-    
     def fastTurningVelocityThrustPower(self, r, α, h):
         # Just use regular mathematical functions
         from math import sin, cos, tan, sqrt, asin
 
-        #         L0, D0 = self.powerFunctions(α)
-        #         L0, D0 = L0.n(), D0.n()
-        # Assuming 10 m/s, 10 degrees C: http://www.airfoiltools.com/calculator/reynoldsnumber?MReNumForm%5Bvel%5D=10&MReNumForm%5Bchord%5D=1&MReNumForm%5Bkvisc%5D=1.4207E-5&yt0=Calculate
-        re = 10 * self._chord / 1.4207e-5
-        L0 = self.ClFit(α=α).n()
-        D0 = self.CdFit(α=α).n() + L0**2 / self.k2 + 0.074 * re**-0.2
+
+        L1 = self.L1(α=α).n()
+        D1 = self.D1(α=α).n()
         
         # Roll
-        denom = r * self.k1(h=h) * (D0 * tan(α * deg2rad) - L0)
-        roll = asin(self._mass / denom)
+        denomRoll = r * (D1 * tan(α * deg2rad) - L1)
+        roll = asin(self._mass / denomRoll)
         
         # Velocity
-        denomPart = D0 * tan(α * deg2rad) * sin(roll) + L0 * cos(roll)
+        denomVelocity = D1 * tan(α * deg2rad) * sin(roll) + L1 * cos(roll)
         
-        vSquared = self._mass * g(h=h) / (self.k1(h=h) * denomPart)
+        vSquared = self._mass * g(h=h) / denomVelocity
         
         v = sqrt(vSquared)
         
         # Thrust
-        thr = self.k1(h=h) * vSquared * D0 / cos(α * deg2rad)
+        thr = vSquared * D1 / cos(α * deg2rad)
         
         p = thr * v
         

@@ -138,8 +138,8 @@ class Judge:
 
         # Mean flight power in watts
         meanFlightPower = flight.cycleEnergy / flight.cycleTime
-        # Minimum throughput of any user in Mbps
-        thru = np.min(result) / 1e6
+        # Minimum throughput of any user in kbps
+        thru = np.mean(result) / 1e3
         # Roughly Mb/J
         score = (thru / meanFlightPower).n()
 

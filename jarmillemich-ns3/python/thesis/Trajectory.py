@@ -167,7 +167,7 @@ class LineSegment:
         # Take our average altitude/height
         h = (self.z0 + self.z1) / 2
 
-        return craft.fastStraightVelocityThrustPower(θ = self.theta, α=alpha, a=0, h=h)
+        return craft.fastStraightVelocityThrustPower(θ = self.theta, α=alpha, h=h)
 
     ## Experimental
     def toPoses(self, times, t0, v, alpha):

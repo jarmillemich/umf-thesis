@@ -99,37 +99,37 @@ class Flight:
     # In conjunction with other code, eliminates the overhead needed to
     # demux the piecewise function, except on inter-piece boundaries
     # Also wraps the inner function in fast_callable
-    def getFastEvaluatable(self, t0):
-        # Find the right domain
-        domain_idx = None
+    # def getFastEvaluatable(self, t0):
+    #     # Find the right domain
+    #     domain_idx = None
         
-        for i in range(len(self.px.domains())):
-            dom = self.px.domains()[i]
-            if t0 >= dom.inf() and t0 < dom.sup():
-                domain_idx = i
-                break
+    #     for i in range(len(self.px.domains())):
+    #         dom = self.px.domains()[i]
+    #         if t0 >= dom.inf() and t0 < dom.sup():
+    #             domain_idx = i
+    #             break
                 
-        if domain_idx is None:
-            raise RuntimeError('Not in domain')
+    #     if domain_idx is None:
+    #         raise RuntimeError('Not in domain')
             
 
-        t, px, py, pz, dSq = var('t, px, py, pz, dSq')
+    #     t, px, py, pz, dSq = var('t, px, py, pz, dSq')
         
-        # Have to rebuild R, cannot get pieces out of a wrapped piecewise
-        at_px = self.px.expressions()[domain_idx]
-        at_py = self.py.expressions()[domain_idx]
-        at_pz = self.pz.expressions()[domain_idx]
+    #     # Have to rebuild R, cannot get pieces out of a wrapped piecewise
+    #     at_px = self.px.expressions()[domain_idx]
+    #     at_py = self.py.expressions()[domain_idx]
+    #     at_pz = self.pz.expressions()[domain_idx]
         
-        dSquared = (at_px - px)**2 + (at_py - py)**2 + (at_pz - pz)**2
+    #     dSquared = (at_px - px)**2 + (at_py - py)**2 + (at_pz - pz)**2
         
         
-        R = self.B * log(1 + self.gamma / dSq, 2).function(t, dSq)
+    #     R = self.B * log(1 + self.gamma / dSq, 2).function(t, dSq)
         
-        dSquared = fast_callable(dSquared, vars=[t, px, py, pz], domain=float)
-        func = fast_callable(R, vars=[dSq], domain=float)
+    #     dSquared = fast_callable(dSquared, vars=[t, px, py, pz], domain=float)
+    #     func = fast_callable(R, vars=[dSq], domain=float)
         
-        domain_end = self.px.domains()[domain_idx].sup()
-        return dSquared, func, domain_end
+    #     domain_end = self.px.domains()[domain_idx].sup()
+    #     return dSquared, func, domain_end
     
     def getFasterEvaluatable(self, t0):
         t_at = 0
@@ -173,7 +173,7 @@ class Flight:
 
         return model
     
-    ## Experimental
+    # Generate the poses for the specified times
     def toPoses(self, times):
         import pandas as pd
         import numpy as np
@@ -190,7 +190,6 @@ class Flight:
         while t0 < endTime:
             piece = self._trajectory.pieces[idx]
             alpha = self._alphas[idx]
-            #v, t, p = piece.velocityThrustPower(self._craft, alpha)
             v, t, p = self.vtp[idx]
 
             #print(t0, piece)

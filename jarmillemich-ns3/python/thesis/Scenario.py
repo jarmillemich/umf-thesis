@@ -46,9 +46,6 @@ class Scenario:
         # loopFun could be e.g. tqdm to track progress
         
         # XXX in LTE anything nearer than this is the same throughput
-        
-        
-        
         if maxTime is None:
             # Assume that our total time is the length of the longest trajectories flight
             maxTime = max([flight.cycleTime for flight in flights])
@@ -106,11 +103,4 @@ class Scenario:
             list_plot(plotMeans, plotjoined=True, color='red'),
             list_plot(plotMins, plotjoined=True, color='red'),
             list_plot(plotMaxs, plotjoined=True, color='red')
-        ])
-    
-    # For use in our ns3 simulation
-    def toSimCode(self):
-        return '\r\n'.join([
-            'positionAlloc->Add(Vector(%.2f, %.2f, %.2f));' % (u[0], u[1], u[2])
-            for u in self.users
         ])
