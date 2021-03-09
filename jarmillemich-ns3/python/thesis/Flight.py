@@ -23,7 +23,7 @@ class Flight:
                  B0 = -50
                 ):
         if len(trajectory.pieces) != len(alphas):
-            raise IndexError('Flight trajectory and alphas arguments must match length')
+            raise IndexError('Flight trajectory and alphas arguments must match length %s != %s' % (len(trajectory.pieces), len(alphas)))
         
         self._craft = craft
         self._trajectory = trajectory
@@ -94,70 +94,7 @@ class Flight:
         t, px, py, pz, dSq = var('t, px, py, pz, dSq')
         self.dSquared = (self.px - px)**2 + (self.py - py)**2 + (self.pz - pz)**2
         self.R = self.B * log(1 + self.gamma / dSq, 2)
-        
-    # Gets a faster version of our bandwidth function
-    # In conjunction with other code, eliminates the overhead needed to
-    # demux the piecewise function, except on inter-piece boundaries
-    # Also wraps the inner function in fast_callable
-    # def getFastEvaluatable(self, t0):
-    #     # Find the right domain
-    #     domain_idx = None
-        
-    #     for i in range(len(self.px.domains())):
-    #         dom = self.px.domains()[i]
-    #         if t0 >= dom.inf() and t0 < dom.sup():
-    #             domain_idx = i
-    #             break
                 
-    #     if domain_idx is None:
-    #         raise RuntimeError('Not in domain')
-            
-
-    #     t, px, py, pz, dSq = var('t, px, py, pz, dSq')
-        
-    #     # Have to rebuild R, cannot get pieces out of a wrapped piecewise
-    #     at_px = self.px.expressions()[domain_idx]
-    #     at_py = self.py.expressions()[domain_idx]
-    #     at_pz = self.pz.expressions()[domain_idx]
-        
-    #     dSquared = (at_px - px)**2 + (at_py - py)**2 + (at_pz - pz)**2
-        
-        
-    #     R = self.B * log(1 + self.gamma / dSq, 2).function(t, dSq)
-        
-    #     dSquared = fast_callable(dSquared, vars=[t, px, py, pz], domain=float)
-    #     func = fast_callable(R, vars=[dSq], domain=float)
-        
-    #     domain_end = self.px.domains()[domain_idx].sup()
-    #     return dSquared, func, domain_end
-    
-    def getFasterEvaluatable(self, t0):
-        t_at = 0
-        
-        for i in range(len(self._trajectory.pieces)):
-            piece = self._trajectory.pieces[i]
-            alpha = self._alphas[i]
-            #v, t, p = piece.velocityThrustPower(self._craft, alpha)
-            v, t, p = self.vtp[i]
-            t_at += piece.length / v
-            
-            if t_at > t0:
-                # This is the piece
-                posFunc = piece.fastPiece(t0, v)
-                
-                def dSquared(t, px, py, pz):
-                    ax, ay, az = posFunc(t)
-                    return (px - ax)**2 + (py - ay)**2 + (pz - az)**2
-                
-                def R(dSq):
-                    return self.B * log(1 + self.gamma / dSq, 2)
-                
-                return dSquared, R, t_at
-            
-            
-            
-        raise TypeError('Fell through')
-        
     def render(self, **kwargs):
         t = var('t')
         return parametric_plot([self.px, self.py, self.pz], (t, 0, self.cycleTime - 0.00001), **kwargs)
@@ -180,24 +117,28 @@ class Flight:
         
         
         t0 = times[0]
+        dimes = np.array([t.total_seconds() for t in times - t0])
 
         ret = []
         idx = 0
-        endTime = times[-1]
-        print(endTime)
+        endTime = (times[-1] - t0).total_seconds()
+
+        t_at = 0
 
         #for i in range(len(self._trajectory.pieces)):
-        while t0 < endTime:
+        while t_at < endTime:
             piece = self._trajectory.pieces[idx]
             alpha = self._alphas[idx]
-            v, t, p = self.vtp[idx]
+            v, thr, p = self.vtp[idx]
 
             #print(t0, piece)
-            t0, posePiece = piece.toPoses(times, t0, v, alpha)
-            power = pd.Series([p for t in posePiece.index], dtype=float, index=posePiece.index)
-            posePiece.insert(0, 'power', power, True)
+            #t0, posePiece = piece.toPoses(times, t0, v, alpha, thrust=thr, power=p, df=frame)
+            dt, posePiece = piece.toPosesTest(dimes, t_at, v, alpha, thrust=thr, power=p, craft=self._craft)
+            t_at += dt
             ret.append(posePiece)
             idx += 1
             idx %= len(self._trajectory.pieces)
 
-        return pd.concat(ret)
+        data = np.concatenate(ret, axis=1).transpose()
+        return pd.DataFrame(data, columns=['x','y','z','v','tilt','azimuth','thrust','power'], index=times)
+

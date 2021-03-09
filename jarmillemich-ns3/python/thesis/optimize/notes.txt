@@ -1,0 +1,23 @@
+The perfect trajectory representation:
+  is realistic (no cusping, low dv changes of speed/direction)
+  doesn't wander from the origin
+  can express "fancier" trajectories than just circles or oblate circles, like our bowtie
+  can express nonlinear z-scheduling
+  can express non-uniform topologies
+    e.g. circular in the morning, bowtie in the evening, whatever else at night
+
+
+Fourier XY scheduling?
+
+
+
+Reasons things aren't as interesting:
+  Bandwidth is basically reduced to a function of height, when we have small stations relative to the user distrib
+    If we target minimum throughput, we want to be at the centroid of the most distant users
+    If we target maximum throughput, we want to be above the most active user (boring)
+    If we target average throughput, we want to be at the centroid of the users
+
+  If we have multiple UAVs, we reduce back to the cell pattern, most likely
+
+
+We 

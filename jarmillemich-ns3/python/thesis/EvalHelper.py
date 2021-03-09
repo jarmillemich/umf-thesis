@@ -128,7 +128,21 @@ class Judge:
         return flight
         
     def judgeFlight(self, flight, dbg = False):
-        times, result = self._scene.evaluateCrafts([flight])
+        #times, result = self._scene.evaluateCrafts([flight])
+
+        # TODO define elsewhere
+        bat_Wh_cap = 15.5 * 650
+
+        times = pd.date_range(start = '2020-11-28T08', end = '2020-11-30T08', freq='120S', tz='America/Detroit').to_series()
+        poses = flight.toPoses(times)
+        throughput = self._scene.posesToThroughput(flight, poses)
+        solar = flight._craft.calcSolarPower(poses, 36, -84)
+        battery = flight._craft.calcBatteryCharge(poses, solar, 15.5*650, constant_draw = 109)
+
+        #print('up to', poses.z.max())
+
+        mSocStart = pd.to_datetime(times[0]) + pd.offsets.Hour(6)
+        mSoc = battery[mSocStart:].min() / bat_Wh_cap * 100
 
         if dbg:
             # The ridiculous size is needed for Sage 9.0
@@ -136,12 +150,18 @@ class Judge:
         else:
             positions = None
 
-        # Mean flight power in watts
+        # # Mean flight power in watts
         meanFlightPower = flight.cycleEnergy / flight.cycleTime
-        # Minimum throughput of any user in kbps
-        thru = np.mean(result) / 1e3
-        # Roughly Mb/J
-        score = (thru / meanFlightPower).n()
+        # # Minimum throughput of any user in kbps
+        # thru = np.mean(result) / 1e3
+        # # Roughly Mb/J
+        # score = (thru / meanFlightPower).n()
+
+        #meanFlightPower = poses.power.mean()
+        thru = throughput.mean()[0]
+        #score = thru / meanFlightPower / 1e3
+        #score = thru * mSoc / 1e6
+        score = mSoc
 
         if dbg:
             from sage.all import plot, var
@@ -149,7 +169,46 @@ class Judge:
         else:
             thruPlot = None
 
-        return score, thru, meanFlightPower, flight.cycleTime, positions, thruPlot
+        return score, thru, mSoc, flight.cycleTime, positions, thruPlot
+
+    def flightStats(self, flight, times = None, bat_Wh_cap = 15.5 * 650, constant_draw = 109, extended = False, initial_charge = 0.5):
+        import pandas as pd
+
+        if times is None:
+            times = pd.date_range(start = '2020-11-28T08', end = '2020-11-30T08', freq='120S', tz='America/Detroit').to_series()
+
+        poses = flight.toPoses(times)
+        throughput = self._scene.posesToThroughput(flight, poses)
+        solar = flight._craft.calcSolarPower(poses, 36, -84)
+        battery = flight._craft.calcBatteryCharge(poses, solar, bat_Wh_cap, constant_draw = constant_draw, initial_charge=initial_charge)
+
+        
+
+        ret = {
+            # Some constants
+            'mass': flight._craft._mass,
+            
+            'poses': poses, 
+            'throughput': throughput,
+            'solar': solar,
+            'battery': battery,
+            
+        }
+
+        if extended:
+            # These are MEANINGLESS for a less-than-48-hour flight
+            mSocStart = pd.to_datetime(times[0]) + pd.offsets.Hour(6)
+            mSoc = battery[mSocStart:].min() / bat_Wh_cap * 100
+
+            excessTime = flight._craft.calcExcessTime(battery)
+            chargeMargin = flight._craft.calcChargeMargin(battery)
+
+            ret['mSoc']= mSoc
+            ret['excessTime'] = excessTime
+            ret['chargeMargin'] = chargeMargin
+
+        return ret
+        
 
     # Some info on trajectory
     def displayFlightTrajectoryInfo(self, flight, render = True, threed = False):
@@ -172,18 +231,6 @@ class Judge:
 
         if render:
             if threed:
-        #         show(sum([
-        #             line(((
-        #                 poses['x'][poses.index[i-1]],
-        #                 poses['y'][poses.index[i-1]],
-        #                 poses['z'][poses.index[i-1]]
-        #             ), (
-        #                 poses['x'][poses.index[i]],
-        #                 poses['y'][poses.index[i]],
-        #                 poses['z'][poses.index[i]]
-        #             )), color=hue(i/len(poses.index)), linewidth=400)
-        #             for i in range(len(poses.index))
-        #         ]))
                 show(flight._trajectory.render())
             else:
                 points = [
@@ -259,9 +306,10 @@ class Judge:
 
         if legend: plt.legend(['Battery', 'Altitude'])
 
-        # Note, we take after 6 hours to get past the initial charge
+        # Note, we take after 6 hours to get past the initial charge (really only applies to > 24h timespan)
         mSocStart = pd.to_datetime(start) + pd.offsets.Hour(6)
-        print('mSoc = %.2f%%' % (battery[mSocStart:].min() / bat_Wh_cap * 100))
+        if mSocStart < pd.to_datetime(end):
+            print('mSoc = %.2f%%' % (battery[mSocStart:].min() / bat_Wh_cap * 100))
 
         # Tidy up x axis margins
         plt.autoscale(enable=True, axis='x', tight=True)

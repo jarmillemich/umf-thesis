@@ -98,7 +98,7 @@ class Chromosome:
     def _getReal(self, idx, bits, lower, upper, gray):
         raw = self._getUint(idx, bits, gray)
         nRange = upper - lower
-        nDelta = raw / (1.0<<bits)
+        nDelta = 1.0 * raw / (1<<bits)
         return lower + nDelta * nRange
     
     def getReal8(self, idx, lower = 0.0, upper = 1.0, gray = True):

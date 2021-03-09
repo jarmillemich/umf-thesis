@@ -3,70 +3,11 @@ from multiprocessing import Pool
 from queue import Queue
 import random
 
-class Vector:
-  def __init__(self, pos):
-    self.pos = pos
+from BaseOptimizer import BaseOptimizer, Vector
 
-  def __add__(self, other):
-    if len(self.pos) != len(other.pos):
-      raise TypeError('Vectors must be of the same length to __add__')
 
-    newPos = self.pos.copy()
-    for i in range(len(self.pos)):
-      newPos[i] += other.pos[i]
 
-    return Vector(newPos)
-
-  def __sub__(self, other):
-    if len(self.pos) != len(other.pos):
-      raise TypeError('Vectors must be of the same length to __sub__')
-
-    newPos = self.pos.copy()
-    for i in range(len(self.pos)):
-      newPos[i] -= other.pos[i]
-    
-    return Vector(newPos)
-
-  def __mul__(self, scalar):
-    newPos = self.pos.copy()
-    for i in range(len(self.pos)):
-      newPos[i] *= scalar
-    
-    return Vector(newPos)
-
-  def __rmul__(self, scalar):
-    return self * scalar
-
-  def __div__(self, scalar):
-    return self * (1 / scalar)
-
-  def __repr__(self):
-    return 'Vector<' + ','.join([str(round(p,2)) for p in self.pos]) + '>'
-
-  def length(self):
-    sum = 0
-    for p in self.pos:
-      sum += p ** 2
-    return sqrt(sum)
-
-  def perturb(self):
-    r = random.random()
-    # Comment/uncommet for element vs whole vector multiplication
-    #self.pos = [p * r for p in self.pos]self.pos
-    self.pos = [p * random.random() for p in self.pos]
-
-# Boo hoo https://medium.com/@yasufumy/python-multiprocessing-c6d54107dd55
-_func = None
-def worker_init(func):
-  global _func
-  _func = func
-def worker(x):
-  return _func(x)
-def xmap(func, iterable, processes=None):
-  with Pool(processes, initializer=worker_init, initargs=(func,)) as p:
-    return p.map(worker, iterable)
-
-class PSO:
+class PSO(BaseOptimizer):
   def __init__(self,
                populationSize,
                nDimensions,
@@ -76,6 +17,8 @@ class PSO:
                c1 = 2,
                c2 = 2
   ):
+    super().__init__(self)
+
     #self._populationSize = populationSize
     self._nDimensions = nDimensions
     self._createNewIndividual = createNewIndividual
@@ -92,15 +35,43 @@ class PSO:
 
     self.best = (None, 0)
 
-    for i in range(populationSize):
+    if not hasattr(populationSize, '__iter__'):
+      populationSize = range(populationSize)
+
+    def createAndScore(i):
       position = Vector(createNewIndividual())
       velocity = Vector([0 for i in range(nDimensions)])
       score = self._fitness(position.pos)
 
-      self.particles.append((position, velocity, score, position, score, i))
+      #self.particles.append((position, velocity, score, position, score, i))
+      return (position, velocity, score, position, score, i)
+
+    print('starting')
+    self.particles = xmap(createAndScore, populationSize, processes=16)
+    print('Generated initial %d particles' % len(self.particles))
+
+    for particle in self.particles:
+      position, vel, score, bpos, bscore, i = particle
 
       if score > self.best[1]:
         self.best = (position, score)
+
+    # for i in populationSize:
+    #   position = Vector(createNewIndividual())
+    #   velocity = Vector([0 for i in range(nDimensions)])
+    #   score = self._fitness(position.pos)
+
+    #   self.particles.append((position, velocity, score, position, score, i))
+
+    #   if score > self.best[1]:
+    #     self.best = (position, score)
+
+
+
+    if self.best[0] is None:
+      print([p[2] for p in self.particles])
+      raise TypeError('No initial gradient, did everyone fail?')
+    
 
   def wrapFitness(self, fxn, individual):
     try:
@@ -109,12 +80,15 @@ class PSO:
       # Most likely one waycircle got enclosed in another
       # XXX compensate for this somehow?
       #print('Individual failed', individual)
-      #print(e)
+      print(e)
+      #print(e.stack)
       return 0
 
-  def innerLoop(self, particle):
+  def innerLoop(self, args):
+    #print(self._iteration, self.best)
+    particle, best = args
     w = self._w(self._iteration)
-    globalPosition, globalScore = self.best
+    globalPosition, globalScore = best
     position, velocity, score, bestPosition, bestScore, id = particle
     toBest = bestPosition - position
     toGlobal = globalPosition - position
@@ -139,17 +113,24 @@ class PSO:
       bestScore = newScore
       bestPosition = newPosition
 
+    ## EXPERIMENT when our velocity gets small, run away!
+    if newVelocity.length() > 0 and newVelocity.length() < 20 and False:
+      print('bouncer!', newVelocity.length())
+      newPosition = Vector(self._createNewIndividual())
+
     return (newPosition, newVelocity, newScore, bestPosition, bestScore, id)
   
 
-  def iterate(self, processes = 1, loopFun = lambda x, **kwargs: x):
+  def iterate(self, processes = 1, pool = None, **kwargs):
     
     self._iteration += 1
 
-    if processes > 1:
-      results = xmap(lambda p: self.innerLoop(p), self.particles, processes=processes)
+    if processes > 1 or pool is not None:
+      # Beware, if we use a shared pool self is copied, not referenced!
+      # TODO reduce the spookiness of this mp call
+      results = xmap(lambda p: self.innerLoop(p, self.best), [(p, self.best) for p in self.particles], processes=processes, pool=pool)
     else:
-      results = [self.innerLoop(p) for p in self.particles]
+      results = [self.innerLoop((p, self.best)) for p in self.particles]
 
     newParticles = sorted(results, key=lambda p: p[2])
 
@@ -158,4 +139,16 @@ class PSO:
     self.particles = newParticles
 
 
-    
+  def iterateMany(self, iterations = 1, processes = 1, cb = lambda x: None):
+    if type(iterations) == int:
+      iterations = range(iterations)
+
+    # Use a single pool, this saves several hundred ms per loop
+    with Pool(processes, initializer=worker_init, initargs=(lambda x: self.innerLoop(x),)) as p:
+      for i in iterations:
+        #worker_init(lambda x: self.innerLoop(x))
+        self.iterate(pool = p)
+        #self.iterate(processes = 24)
+        
+
+        cb(i)
