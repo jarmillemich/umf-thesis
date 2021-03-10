@@ -140,5 +140,5 @@ class Flight:
             idx %= len(self._trajectory.pieces)
 
         data = np.concatenate(ret, axis=1).transpose()
-        return pd.DataFrame(data, columns=['x','y','z','v','tilt','azimuth','thrust','power'], index=times)
+        return pd.DataFrame(data, columns=['x','y','z','v','tilt','azimuth','thrust','power','alpha'], index=times)
 

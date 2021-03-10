@@ -258,7 +258,9 @@ class LineSegment:
             np.full(len(dices), tilt),
             np.full(len(dices), azimuth % 360),
             np.full(len(dices), thrust),
-            np.full(len(dices), power)
+            np.full(len(dices), power),
+            #alpha
+            np.full(len(dices), alpha),
         ], dtype='float64')
         
 class ArcSegment:
@@ -462,7 +464,9 @@ class ArcSegment:
             #'azimuth': [(sign * (90 - math.atan2(math.cos(theta), -math.sin(theta)) * rad2deg)) % 360 for theta in thetas],
             (sign * (90 - np.arctan2(np.cos(thetas), -np.sin(thetas)) * rad2deg)) % 360,
             np.full(len(dices), thrust),
-            np.full(len(dices), power)
+            np.full(len(dices), power),
+            #alpha
+            np.full(len(dices), alpha)
         ], dtype='float64')
 
 
@@ -771,7 +775,9 @@ class GeneralSegment:
                 np.full(len(dices), azimuth % 360),
                 # Thrust power
                 np.full(len(dices), thrust),
-                np.full(len(dices), power)
+                np.full(len(dices), power),
+                #alpha
+                np.full(len(dices), alpha),
             ], dtype='float64')
         else:
             rate = self.dtheta / dt
@@ -817,7 +823,9 @@ class GeneralSegment:
                 solarTilt * rad2deg, solarAzimuth * rad2deg,
                 # Thrust power
                 np.full(len(dices), thrust),
-                np.full(len(dices), power)
+                np.full(len(dices), power),
+                # Alpha
+                np.full(len(dices), alpha),
             ], dtype='float64')
 
 # Can only handle curves, but easier to use (hopefully)

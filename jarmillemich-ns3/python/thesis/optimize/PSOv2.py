@@ -37,8 +37,9 @@ class PSO(BaseOptimizer):
     if not hasattr(populationSize, '__iter__'):
       populationSize = range(populationSize)
 
-    def createAndScore(i):
-      position = Vector(createNewIndividual(i))
+    def createAndScore(data):
+      i, pos = data
+      position = Vector(pos)
       velocity = Vector([0 for i in range(nDimensions)])
       score = self._fitness(position.pos)
 
@@ -46,7 +47,7 @@ class PSO(BaseOptimizer):
       return (position, velocity, score, position, score, i)
 
     print('starting')
-    self.particles = xmap(createAndScore, populationSize, processes=30)
+    self.particles = xmap(createAndScore, [(i, createNewIndividual(i)) for i in populationSize], processes=30)
     print('Generated initial %d particles' % len(self.particles))
 
     for particle in self.particles:
@@ -130,11 +131,21 @@ class PSO(BaseOptimizer):
 
     return bestPos, highScore
   
-  def snapshot(self, file, n):
-    file.write('PSOv2:' + str(n))
+  def snapshot(self, o, n):
+    o('PSOv2:' + str(n) + ':' + str(self.best[1]))
+    o([particle[2] for particle in self.particles])
     particles = self.particles[-n:]
     for particle in particles:
-      file.write(particle[2])
-      file.write(particle[0].pos)
+      o(particle[2])
+      o(particle[0].pos)
+
+  def dump(self, o):
+    o('PSOv2final:' + str(len(self.particles)) + str(self.best[1]))
+    for particle in self.particles:
+      o(particle[2])
+      o(particle[0].pos)
+      o(particle[1].pos)
+      o(particle[3].pos)
+      o(particle[4])
 
   

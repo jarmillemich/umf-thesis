@@ -1,4 +1,5 @@
 # Just our optimization helpers
+import numpy as np
 
 # Just something to build expressions
 class Defunc:
@@ -181,6 +182,46 @@ def throughputPenalty(levels, degree = 2):
 
     return Defunc(inner, ['TP<', None, '>'])
 
+
+def thrustPenalty(hi, penalty = 999):
+    # Discourage using higher than available thrust
+    def inner(stats):
+        thrust = stats['poses'].thrust
+        delta = np.zeros(len(thrust))
+        delta[thrust > hi] = 1
+        delta *= penalty
+
+        return -sum(delta)
+
+    return Defunc(inner, ['TRP<', None, '>'])
+
+def alphaPenalty(lo = -5, hi = 12, penalty = 999):
+    # If we go outside our Angle-of-Attack limits
+    # We start being in non-aerodynamic/rocket mode, which our
+    # equations do NOT work for (hovering reports 0 power use)
+    def inner(stats):
+        alpha = stats['poses'].alpha
+        delta = np.zeros(len(alpha))
+        delta[alpha < lo] = 1
+        delta[alpha > hi] = 1
+        delta *= penalty
+
+        return -sum(delta)
+
+    return Defunc(inner, ['AP<', None, '>'])
+
+def speedPenalty(lo, hi, degree = 2):
+    # Penalize going to fast/slow
+    def inner(stats):
+        poses = stats['poses']
+        above = poses.v - hi
+        below = lo - poses.v
+        above[above < 0] = 0
+        below[below < 0] = 0
+        violation = above + below
+        return -sum(violation**degree)
+
+    return Defunc(inner, ['VP<', None, '>'])
 
 # The only problem with this is that we'll not reap the benefits past our horizon/factor in the oppurtunity cost
 # Or will we? Probably not. Example: ending point pointing out the radius greatly hinders the next time window
