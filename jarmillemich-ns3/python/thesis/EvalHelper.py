@@ -3,8 +3,6 @@ from thesis.Flight import Flight
 from thesis.Genetics import Chromosome
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.pyplot import figure
 from sage.all import point, hue, line, show
 
 
@@ -253,6 +251,7 @@ class Judge:
         
     def displayFlightPower(self, flight, bat_Wh_cap, P_payload, start = '2020-07-01T08', end = '2020-07-03T08', legend = False, savename=None):
         from matplotlib.dates import DateFormatter
+        import matplotlib.pyplot as plt
         print(' Power info')
         print('=' * 80)
         
@@ -321,6 +320,7 @@ class Judge:
         print()
 
     def displayFlightAltitudeThroughputInfo(self, flight, start = '2020-07-01T08', end = '2020-07-03T08'):
+        import matplotlib.pyplot as plt
         print(' Throughput (estimated) and altitude')
         print('=' * 80)
         

@@ -37,6 +37,9 @@ class GA(BaseOptimizer):
       for i in range(populationSize)
     ]
 
+    # Store our best invidivual
+    self.best = None
+
   def prepare(self):
     pass
 
@@ -72,6 +75,9 @@ class GA(BaseOptimizer):
 
     # Get sorted by fitness, highest first
     individuals.sort(key = lambda x: -x[1])
+
+    if individuals[0][1] >
+    self.best = individuals[0]
 
     # Next generation, pulling out elites first
     newIndividuals = [ind[0] for ind in individuals[:self._elitism]]

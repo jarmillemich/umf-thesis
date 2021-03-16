@@ -372,7 +372,7 @@ class FitnessHelper:
 
         return vectorToTrajectory
 
-    def getFitness(self, trajBuilder = None, debug = False):
+    def getFitness(self, trajBuilder = None, debug = False, initial_charge = 0.1):
         if trajBuilder is None:
             trajBuilder = self.getTrajBuilder()
 
@@ -385,18 +385,25 @@ class FitnessHelper:
             'N0': -174       # See lte-spectrum-value-helper.cc kT_dBm_Hz
         }
 
+        # Keep track of how many fitness evaluations he have done
+        # (Possibly not thread safe, but an appx value is fine)
+        import multiprocessing
+        cntr = multiprocessing.Value('i', 0)
+
         def inner(vec):
+            cntr.value += 1
             traj, alphas = trajBuilder(vec)
             flight = Flight(self.craft, traj, alphas, **radioParams)
             
             # XXX This initial charge assumes we start in high-solar times
-            stats = self.judge.flightStats(flight, times=self.times, initial_charge=0.1)
+            stats = self.judge.flightStats(flight, times=self.times, initial_charge=initial_charge)
 
             if debug:
                 return self.expr.debug(stats)
             else:
                 return self.expr(stats)
             
+        inner.evaluations = cntr
 
         return inner
 
@@ -404,8 +411,10 @@ class SplineyFitnessHelper(FitnessHelper):
     """
     FitnessHelper but with our SplineyTrajectory instead of ImperativeTrajectory
     """
-    def __init__(self, *args, desiredDuration = None, **kwargs):
+    def __init__(self, *args, desiredDuration = None, initialPosition = None, zMode = 'absolute', **kwargs):
         self.desiredDuration = desiredDuration
+        self.initialPosition = initialPosition
+        self.zMode = zMode
         super().__init__(*args, **kwargs)
 
     def getTrajBuilder(self):
@@ -430,14 +439,35 @@ class SplineyFitnessHelper(FitnessHelper):
                 for i in range(0, len(lst), n):
                     yield lst[i:i + n]
             
+            zSchedule = None
+
+            if self.zMode == 'delta':
+                zOffsets = np.array(vec[2::codonsPerSegment])
+                zOffsets = zOffsets.cumsum() + 1000 # TODO not hard code
+                # Loop back around
+                zOffsets[-1] = zOffsets[0]
+                print(zOffsets)
+                vec[2::codonsPerSegment]
+            if self.zMode == 'schedule':
+                codonsPerSegment = 5
+                zSchedule, vec = vec[:6], vec[6:]
+
             waypoints = list(chunks(vec, codonsPerSegment))
 
+            if self.initialPosition is not None:
+                waypoints[0][:len(self.initialPosition)] = self.initialPosition
+
+            
+
+            fixedFirst = self.initialPosition is not None
                 
             traj = SplineyTrajectory(
                 waypoints,
                 desiredDuration=self.desiredDuration,
                 craft=self.craft,
-                minimumRadius = 20
+                minimumRadius = 20,
+                fixedFirst = fixedFirst,
+                zSchedule = zSchedule
             )
             alphas = traj.alphas
             return traj, alphas

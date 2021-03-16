@@ -13,6 +13,7 @@ class PSO(BaseOptimizer):
                wSchedule = lambda x: 0.9,
                c1 = 2,
                c2 = 2,
+               bounds = None,
                **kwargs
   ):
     super().__init__(fitness, **kwargs)
@@ -27,6 +28,7 @@ class PSO(BaseOptimizer):
     self._w = wSchedule
     self._c1 = c1
     self._c2 = c2
+    self._bounds = bounds
 
     self._iteration = 0
 
@@ -88,6 +90,10 @@ class PSO(BaseOptimizer):
       newVelocity = vInertia + vCognitive + vSocial
       newPosition = position + gamma * newVelocity
 
+      # Constrain, if we have bounds
+      if self._bounds is not None:
+        newPosition, newVelocity = self.bound(newPosition, newVelocity)
+
       # Score will be filled in in a moment
       newParticles.append((newPosition, newVelocity, score, bestPosition, bestScore, idx))
 
@@ -95,6 +101,30 @@ class PSO(BaseOptimizer):
 
     #print('bestie is', globalScore)
     return self.getBest()
+
+  def bound(self, pos, vel):
+    """
+    Modify pos to be within our (possibly repeating) bounds.
+    If a violation is detected, the velocity is also set to zero
+    """
+    for i in range(self._nDimensions):
+      bound = self._bounds[i % len(self._bounds)]
+      if len(bound) != 2:
+        raise TypeError('Bounds should have an upper and lower')
+
+      lower, upper = bound
+
+      if lower is not None and pos[i] < lower:
+        pos[i] = lower
+        if vel[i] < 0:
+          vel[i] = 0
+
+      if upper is not None and pos[i] > upper:
+        pos[i] = upper
+        if vel[i] > 0:
+          vel[i] = 0
+    
+    return pos, vel
 
   def update(self, fitnesses):
     if len(self.particles) != len(fitnesses):
@@ -142,6 +172,9 @@ class PSO(BaseOptimizer):
   def dump(self, o):
     o('PSOv2final:' + str(len(self.particles)) + str(self.best[1]))
     for particle in self.particles:
+      # position, velocity, score, bestPosition, bestScore, idx
+      # ->
+      # score, position, velocity, bestPosition, bestScore
       o(particle[2])
       o(particle[0].pos)
       o(particle[1].pos)

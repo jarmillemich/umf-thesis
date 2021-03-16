@@ -22,7 +22,7 @@ OP_CONTRACT = 2
 OP_NONE = 3
 
 class ParallelNelderMead(BaseOptimizer):
-  def __init__(self, nDimensions, createVertex, fitness, k = 1, initVerts = None, **kwargs):
+  def __init__(self, nDimensions, createVertex, fitness, k = 1, initVerts = None, adaptive = False, **kwargs):
     super().__init__(self.multiFitness(fitness), **kwargs)
     self.__realFitness = fitness
     self.k = k
@@ -30,9 +30,9 @@ class ParallelNelderMead(BaseOptimizer):
     self.nDimensions = nDimensions
     
     if initVerts is None:
-      vertices = [Vector(createVertex(i)) for i in range(nDimensions + 1)]
+      self._initverts = vertices = [Vector(createVertex(i)) for i in range(nDimensions + 1)]
 
-      print('Judging vertices')
+      print('Judging vertices (%d)' % len(vertices))
       # Moderately awful
       if self.nDimensions < 1000:
         self.vertices = tmap(lambda vec: VertexWrapper(vec, fitness(vec)), vertices, processes=self._processes)
@@ -55,7 +55,11 @@ class ParallelNelderMead(BaseOptimizer):
 
     self.bestScore = self.vertices[-1].fitness
 
-    self.coeff = (1, 2, 0.5, 0.5)
+    if adaptive:
+      # https://link.springer.com/content/pdf/10.1007/s10589-010-9329-3.pdf
+      self.coeff = (1, 1 + 2 / nDimensions, 0.75 - 1 / (2 * nDimensions), 1 - 1 / nDimensions)
+    else:
+      self.coeff = (1, 2, 0.5, 0.5)
 
   def multiFitness(self, fitness):
     # Fitness in the parallel map, implements the core of NM
@@ -81,7 +85,7 @@ class ParallelNelderMead(BaseOptimizer):
         if contractFitness > cutoff:
           return (OP_CONTRACT, contractFitness)
       except Exception as e:
-        print('Failure', e)
+        #print('Failure', e)
         pass
 
       # We can have negative fitness, so we don't want to reward a 0...
@@ -182,4 +186,16 @@ class ParallelNelderMead(BaseOptimizer):
     return (reflectPoint, expandPoint, contractPoint, cutoff, best)
 
 
+  def snapshot(self, o, n):
+    o('PNM:' + str(n) + ':' + str(self.vertices[-1].fitness))
+    o([vertex.fitness for vertex in self.vertices])
+    vertices = self.vertices[-n:]
+    for vertex in vertices:
+      o(vertex.fitness)
+      o(vertex.vec.pos)
 
+  def dump(self, o):
+    o('PNMfinal:' + str(len(self.vertices)) + str(self.vertices[-1].fitness))
+    for vertex in self.vertices:
+      o(vertex.fitness)
+      o(vertex.vec.pos)

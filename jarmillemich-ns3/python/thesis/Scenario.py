@@ -83,7 +83,7 @@ class Scenario:
         return frame
 
     def posesToThroughputFrame(self, flight, poses):
-        # The same as the non-frame version, but returns a indexed DataFrame (SLOWER)
+        # The same as the non-frame version, but returns an indexed DataFrame (SLOWER)
         import pandas as pd
         data = self.posesToThroughput(flight, poses)
 

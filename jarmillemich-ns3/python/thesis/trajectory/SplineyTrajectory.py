@@ -26,9 +26,10 @@ def rescale(points, center, scale):
 
   return [rescaleSingle(pt) for pt in points]
 
+from math import sin, cos, sqrt, pi
+from thesis.optimize.BaseOptimizer import Vector
 def subSolve(leftInfo, rightInfo, rightFirst):
-  from math import sin, cos, sqrt, pi
-  from thesis.optimize.BaseOptimizer import Vector
+  
   # Which way from the two points the centers are (+/- radian direction)
   rightSide = 1 if rightFirst else -1
   leftSide = -1 if rightFirst else 1
@@ -147,23 +148,40 @@ def solve(left, right, minimumRadius = None):
         raise TypeError('Too close! %.2f,%.2f<%.2f' % (a[0].radius, b[0].radius, minimumRadius))
       return b
 
+  # Return the shorter of the two paths
   if a[0].length + a[1].length < b[0].length + b[1].length:
     return a
   else:
     return b
 
 class SplineyTrajectory(BaseTrajectory):
-  def __init__(self, waypoints, center = (0, 0), desiredDuration = None, craft = None, minimumRadius = 50, initialHeight = 1000):
+  def __init__(
+    self,
+    waypoints,
+    center = (0, 0),
+    desiredDuration = None,
+    craft = None,
+    minimumRadius = 50,
+    initialHeight = 1000,
+    fixedFirst = False,
+    zSchedule = None
+  ):
 
     currentScale = 1
 
     doFixedPoint = desiredDuration is not None and craft is not None
     self.alphas = []
 
+    if zSchedule is not None:
+      waypoints = self.doZSchedule(waypoints, zSchedule, craft)
+      #print(waypoints)
+
     # Run a number of iterations and hope fixed point will converge
     # Or, just one if not doing fixed point
     for it in range(10 if doFixedPoint else 1):
       mappedPoints = rescale(waypoints, center, currentScale)
+      if fixedFirst:
+        mappedPoints[0] = waypoints[0]
 
       segments = []
       time = 0
@@ -194,3 +212,54 @@ class SplineyTrajectory(BaseTrajectory):
         self.scale = currentScale
 
     super().__init__(segments)
+
+  def doZSchedule(self, waypoints, zSchedule, craft):
+    # Gather up the relative times of all of our segments
+    import numpy as np
+    gain, *schedule = zSchedule
+    total_time = 0
+    times = []
+    for i in range(len(waypoints) - 1):
+      x0, y0, h0, a1, a2 = waypoints[i]
+      x1, y1, h1, _, _ = waypoints[i + 1]
+      segs = solve([x0, y0, 1000, h0, a1, a2], [x1, y1, 1000, h1])
+      times.append(total_time)
+      total_time += segs[0].length / segs[0].velocityThrustPower(craft, a1)[0]
+      total_time += segs[1].length / segs[1].velocityThrustPower(craft, a2)[0]
+
+    duration = 24 * 60 * 60
+    times = np.array(times) / total_time
+
+    # Normalize our z Schedule
+    schedule = np.array(schedule)
+    schedule /= schedule.sum()
+
+    rest, ascend, sustain, descend, moreRest = schedule
+    ascendStart = rest
+    sustainStart = ascendStart + ascend
+    descendStart = sustainStart + sustain
+    restStart = descendStart + descend
+
+    # Start slicing and dicing
+    out = []
+    z0 = 1000 # TODO hardcoding
+    for i in range(len(waypoints)):
+      x, y, h, a1, a2 = waypoints[i]
+
+      z = z0
+      
+      if i == len(times):
+        z = z0
+      elif times[i] < ascendStart:
+        z = z0
+      elif times[i] < sustainStart:
+        z = z0 + (times[i] - ascendStart) * gain / ascend
+      elif times[i] < descendStart:
+        z = z0 + gain
+      elif times[i] < restStart:
+        z = z0 + gain - (times[i] - descendStart) * gain / descend
+
+      out.append([x, y, z, h, a1, a2])
+      #print(times[i] if i < len(times) else 'end', z)
+
+    return out

@@ -210,44 +210,12 @@ class Aircraft:
         rad = self.calcSolarIrradiance(pose, latitude, longitude)
         # Oettershagen2017Design eq 11
         return rad['poa_global'] * self._solarArea * self._efficiency['solar'] * self._efficiency['mppt']
-    
-    def calcBatteryChargeOld(self, pose, solar, bat_capacity_Wh, initial_charge = 0.5, constant_draw = 0):
-        import pandas as pd
-        bat_Wh = [0 for t in solar.index]
-        # TODO we assume this is constant...
-        seconds = (solar.index[1] - solar.index[0]).total_seconds()
-        
-        # This is sort of a left-hand Riemann integration?
-        # TODO this can be vectorized, probably
-        bat_Wh[0] = bat_capacity_Wh * initial_charge
-        for idx in range(1, len(solar)):
-            t = solar.index[idx]
-            P_out = pose.power[t] + constant_draw
-            P_in = solar[t]
-            P_bat = P_in - P_out
-            if P_bat > 0:
-                # Charging
-                P_bat *= self._efficiency['bat_charging']
-            else:
-                # discharging
-                P_bat *= self._efficiency['bat_discharging']
-                
-            # Ws to Wh
-            P_bat /= 3600
-                
-            bat_Wh[idx] = bat_Wh[idx - 1] + seconds * P_bat
-            if bat_Wh[idx] > bat_capacity_Wh:
-                bat_Wh[idx] = bat_capacity_Wh
-
-        
-        #print('weep')
-        return pd.Series(bat_Wh, index = solar.index, dtype=float)
 
     def calcBatteryCharge(self, poses, solar, bat_capacity_Wh, initial_charge = 0.5, constant_draw = 0):
-        # Only about 500x faster than the for loop version
+        # Only about 500x faster than the old for loop version
         import numpy as np
         import pandas as pd
-        # TODO we assume this is constant...
+        # TODO we assume this is constant
         dt = (solar.index[1] - solar.index[0]).total_seconds()
         
         power = poses.power + constant_draw
@@ -260,6 +228,11 @@ class Aircraft:
         erem = e
         prem = p
 
+        # The general approach is to look for points where
+        # the "power in" matches the "power out", and fill
+        # in regions between these points in bulk
+        # Each iteration covers one "(optionally decrease and) increase to capacity"
+        # and one "at full capacity" region
         while any(erem > bat_capacity_Wh):
             idx1 = np.argmax(erem > bat_capacity_Wh)
             cut = np.argmax(prem[idx1:] < 0) + idx1

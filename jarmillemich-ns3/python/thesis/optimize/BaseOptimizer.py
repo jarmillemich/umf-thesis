@@ -104,6 +104,10 @@ class Vector:
     # Pass through index access to array
     return self.pos[key]
 
+  def __setitem__(self, key, value):
+    # Pass through index access to array
+    self.pos[key] = value
+
 # Boo hoo https://medium.com/@yasufumy/python-multiprocessing-c6d54107dd55
 _func = None
 def worker_init(func):
@@ -142,10 +146,19 @@ class BaseOptimizer:
 
     # Use a single pool, this saves several hundred ms per loop
     if processes > 1:
-      with Pool(processes, initializer=worker_init, initargs=(self._fitness,)) as p:
-        for i in iterations:
-          self.iterate(pool = p)
-          cb(i)
+      # Using this hack as we seem to be leaking memory somewhere, TODO track that down
+      # It seems like .map will do ~4 batches per iteration
+      batchSize = 128
+      runs = 0
+      for batch in range(iterations / batchSize):
+        with Pool(processes, initializer=worker_init, initargs=(self._fitness,)) as p:
+          for i in range(batchSize):
+            self.iterate(pool = p)
+            cb(i)
+
+            runs += 1
+            if runs >= iteratons:
+              break
     else:
       for i in iterations:
         self.iterate()

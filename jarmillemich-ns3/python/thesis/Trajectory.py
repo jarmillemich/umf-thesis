@@ -749,6 +749,11 @@ class GeneralSegment:
 
         dices = times[np.bitwise_and(times >= t_at, times < t_at + dt)] - t_at
 
+        if dt == 0:
+            #print('something went wrong', self.length, v, self.dz, self.p0, self.p1)
+            # Oh well
+            return dt, np.array([[]]*9)
+
         dzdt = self.dz / dt
 
         
@@ -951,9 +956,6 @@ class BaseTrajectory:
     # Length of our entire path
     def length(self):
         return sum([p.length for p in self.pieces])
-
-    def toPoses(self):
-        t0 = 0
 
 
 class WaycircleTrajectory(BaseTrajectory):
