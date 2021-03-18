@@ -22,7 +22,7 @@ class PSO(BaseOptimizer):
     #self._populationSize = populationSize
     self._nDimensions = nDimensions
     self._createNewIndividual = createNewIndividual
-    self._fitness = lambda x: self.wrapFitness(fitness, x)
+    #self._fitness = lambda x: self.wrapFitness(fitness, x)
     #self._fitness = fitness
 
     self._w = wSchedule
@@ -49,7 +49,7 @@ class PSO(BaseOptimizer):
       return (position, velocity, score, position, score, i)
 
     print('starting')
-    self.particles = xmap(createAndScore, [(i, createNewIndividual(i)) for i in populationSize], processes=30)
+    self.particles = xmap(createAndScore, [(i, createNewIndividual(i)) for i in populationSize], processes=self._processes)
     print('Generated initial %d particles' % len(self.particles))
 
     for particle in self.particles:
@@ -170,7 +170,7 @@ class PSO(BaseOptimizer):
       o(particle[0].pos)
 
   def dump(self, o):
-    o('PSOv2final:' + str(len(self.particles)) + str(self.best[1]))
+    o('PSOv2final:' + str(len(self.particles)) + ':' + str(self.best[1]))
     for particle in self.particles:
       # position, velocity, score, bestPosition, bestScore, idx
       # ->

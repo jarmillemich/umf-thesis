@@ -130,6 +130,7 @@ def tmap(func, iterable, processes=None, pool=None, leave=True):
 
 class BaseOptimizer:
   def __init__(self, fitness, processes=1):
+    self.__rawFitness = fitness
     self._fitness = lambda x: self.wrapFitness(fitness, x)
     self._processes = processes
     
@@ -139,20 +140,26 @@ class BaseOptimizer:
     fitnesses = self.evaluateGeneration(state, pool=pool)
     self.update(fitnesses)
 
-  def iterateMany(self, iterations = 1, processes = 1, cb = lambda x: None):
+  def iterateMany(self, iterations = 1, cb = lambda x: None):
     # We could pass in a number, or perhaps a tqdm
     if type(iterations) == int:
       iterations = range(iterations)
 
+    # This is a silly "convergence" criteria but we'll go with it
+    # Mostly to keep NM from shrinking forever and wasting time
+    max_evals = 128 * 1024
+
     # Use a single pool, this saves several hundred ms per loop
-    if processes > 1:
+    if self._processes > 1:
       # Using this hack as we seem to be leaking memory somewhere, TODO track that down
       # It seems like .map will do ~4 batches per iteration
       batchSize = 128
       runs = 0
-      for batch in range(iterations / batchSize):
-        with Pool(processes, initializer=worker_init, initargs=(self._fitness,)) as p:
+      for batch in range(len(iterations) // batchSize + 1):
+        with Pool(self._processes, initializer=worker_init, initargs=(self._fitness,)) as p:
           for i in range(batchSize):
+            if self.__rawFitness.evaluations.value > max_evals: break
+
             self.iterate(pool = p)
             cb(i)
 

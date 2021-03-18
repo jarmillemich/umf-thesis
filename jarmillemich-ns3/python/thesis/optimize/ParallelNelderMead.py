@@ -24,7 +24,8 @@ OP_NONE = 3
 class ParallelNelderMead(BaseOptimizer):
   def __init__(self, nDimensions, createVertex, fitness, k = 1, initVerts = None, adaptive = False, **kwargs):
     super().__init__(self.multiFitness(fitness), **kwargs)
-    self.__realFitness = fitness
+    self.__rawFitness = fitness
+    print('TEST', self.__rawFitness.evaluations)
     self.k = k
 
     self.nDimensions = nDimensions
@@ -92,6 +93,9 @@ class ParallelNelderMead(BaseOptimizer):
       # Just take the lowest we have and go down a notch, that'll never diverge!
       return (OP_NONE, min([v.fitness for v in self.vertices]))
   
+    # XXX
+    inner.evaluations = fitness.evaluations
+
     return inner
 
   def prepare(self):
