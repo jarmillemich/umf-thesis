@@ -715,16 +715,23 @@ class GeneralSegment:
             ], **kwargs)
 
     def toSim(self, craft, alpha):
-        # TODO
         from ns.core import Vector
         from ns.mobility import PathMobilityModelSegments
         
         v, t, p = self.velocityThrustPower(craft, alpha)
-        return PathMobilityModelSegments.ArcSegment(
-            Vector(self.x, self.y, self.z),
-            self.r, self.theta, self.dtheta,
-            v
-        )
+
+        if self.radius != inf:
+            return PathMobilityModelSegments.GeneralSegment(
+                Vector(self.cx, self.cy, self.z0),
+                self.radius, self.theta, self.dtheta,
+                self.dz, v
+            )
+        else:
+            return PathMobilityModelSegments.GeneralSegment(
+                Vector(self.x0, self.y0, self.z0),
+                Vector(self.x1, self.y1, self.z1),
+                v
+            )
     
     # Gets the kinematic components of the flight given the craft and angle
     def velocityThrustPower(self, craft, alpha):

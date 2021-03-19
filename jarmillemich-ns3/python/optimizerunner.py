@@ -44,14 +44,20 @@ opath = 'out/stats-v1-PSO-%dp-r%d-%du-%.2fkm-op_%s-%dit-e%d.txt' % (
   args.energy
 )
 
-# Set up random state right away
-import random
-random.seed(args.run)
+# We want a fixed scenario over all of our runs, so do a constant seed here
+random.seed(0)
 np.random.seed(random.randint(0,99999999))
 
 scene = Scenario()
 scene.addRandomGroundUsersUniformCircular(5, r = args.radius * 1000)
 judge = Judge(scene, craft)
+
+print(scene.users)
+
+# Now set up the optimizer random state
+import random
+random.seed(args.run)
+np.random.seed(random.randint(0,99999999))
 
 # Use a time pretty far into winter, 24 hours
 times = pd.date_range(start = '2020-11-28T09', end = '2020-11-29T09', freq='10S', tz='America/Detroit').to_series()

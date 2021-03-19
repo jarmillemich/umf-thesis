@@ -164,7 +164,7 @@ class BaseOptimizer:
             cb(i)
 
             runs += 1
-            if runs >= iteratons:
+            if runs >= len(iterations):
               break
     else:
       for i in iterations:
