@@ -270,13 +270,15 @@ class Judge:
         ax1.set_xlabel('Local Time [h]')
         ax1.set_ylabel('Power [W]')
         #ax1.set_ylim(bottom = 0, top = solar.max() * 1.1)
-        ax1.set_ylim(bottom = 0, top = 3500)
+        ax1.set_ylim(bottom = 0, top = 5000)
 
         #solar.plot(color='tab:orange')
         ax1.plot(solar, color='orange')
         # NB Smoothing is for ladder trajectory, as the relatively rapid switches make it very hard to read
         poses.power.rolling(100, center=True).mean().plot(color='red', linestyle=(0,(2,4)))
         (poses.power + P_payload).rolling(64, center=True).mean().plot(color='darkgreen', linestyle=(0, (8,2)))
+
+        
 
         # XXX Thunking something out, not needed
         totPower = (poses.power + P_payload).rolling(64, center=True).mean()
@@ -289,13 +291,20 @@ class Judge:
 
         if legend: plt.legend(['Solar', 'Propulsion', 'Total'], loc='upper center', bbox_to_anchor=(0.4, 1))
 
+        if any(E_g > 0):
+            EgMax = E_g.max()
+            EgMaxRatio = EgMax / bat_Wh_cap
+            print('Stored at most %.2f Wh = %.2f%% of battery capacity as gravity potential' % (
+                EgMax, EgMaxRatio * 100
+            ))
+
 
         ax2 = ax1.twinx()
         ax2.xaxis.set_major_formatter(DateFormatter('%H:%M', tz=times.tz))
         ax2.set_ylabel('Stored Energy [Wh]', color='blue')
         ax2.tick_params(axis='y', labelcolor='blue')
         #ax2.set_ylim(bottom = 0, top = (battery + E_g).max() * 1.3)
-        ax2.set_ylim(0, 15000)
+        ax2.set_ylim(0, 20000)
         #battery.plot(color='tab:red')
         ax2.plot(battery, color='blue', linestyle='-', marker='p', markevery=250, markersize=8)
         if poses['z'].max() - base_height > 10:
