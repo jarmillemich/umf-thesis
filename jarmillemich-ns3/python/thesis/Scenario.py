@@ -3,6 +3,7 @@ from random import randrange
 import numpy as np
 
 class Scenario:
+    """Represents our ground users, with methods to compute throughput frames"""
     def __init__(self):
         # Array of R3 vectors
         self.users = []
@@ -10,8 +11,8 @@ class Scenario:
     def addUser(self, user):
         self.users.append(user)
         
-    # Add users randomly in a rectangle
     def addRandomGroundUsersUniform(self, n, xmin = -500, xmax = 500, ymin = -500, ymax = 500):
+        """Add users randomly in a rectangle."""
         for i in range(n):
             self.addUser(vector((
                 randrange(xmin, xmax),
@@ -19,8 +20,8 @@ class Scenario:
                 0
             )))
         
-    # Add users randomly in a circular region
     def addRandomGroundUsersUniformCircular(self, n, cx = 0, cy = 0, r = 500):
+        """Add users randomly in a circular region."""
         r2 = r * r
         for i in range(n):
             dx = randrange(-r, r)
@@ -36,14 +37,13 @@ class Scenario:
             )))
             
     def render(self, **kwargs):
-        # Just render our ground users
+        """render our ground users."""
         return sum([
             point(p, **kwargs) for p in self.users
         ])
 
     def posesToThroughput(self, flight, poses):
-        
-        # Convert some poses to a dataframe of throughputs in bps
+        """Convert some poses to a dataframe of throughputs in bps"""
         #idx = pd.MultiIndex.from_product([poses.index, [i for i in range(len(self.users))]], names=['time', 'user'])
         #frame = pd.DataFrame(index=idx, columns=['throughput'], dtype='float64')
 
@@ -83,7 +83,7 @@ class Scenario:
         return frame
 
     def posesToThroughputFrame(self, flight, poses):
-        # The same as the non-frame version, but returns an indexed DataFrame (SLOWER)
+        """The same as the non-frame version, but returns an indexed DataFrame (SLOWER)"""
         import pandas as pd
         data = self.posesToThroughput(flight, poses)
 

@@ -1,17 +1,19 @@
 # Just our optimization helpers
 import numpy as np
 
-# Just something to build expressions
 class Defunc:
+    """For constructing expressions"""
     def __init__(self, eval, debugString = None):
         self.eval = eval
         self.debugString = debugString
 
     def __call__(self, state):
+        """Evaluate the expression we represent"""
         return self.eval(state)
 
     # Make this pretty looking
     def debug(self, state):
+        """Build out a string to see what is being evaluated"""
         if self.debugString is None:
             return str(self(state))
         elif isinstance(self.debugString, list):
@@ -29,7 +31,7 @@ class Defunc:
             return self.debugString
 
     def _sanitize(self, other):
-        # Try and handle constants
+        """Try and handle constants"""
         ret = other
 
         if type(other) is float or type(other) is int:
@@ -77,8 +79,8 @@ class Defunc:
 
 
 def radiusPenalty(radius, degree = 2):
+    """Penalize encroachment on the surrounding regions"""
     import numpy as np
-    # Penalize encroachment on the surrounding regions
     def inner(stats):
         poses = stats['poses']
         dist = np.sqrt(poses.x**2 + poses.y**2)
@@ -89,7 +91,7 @@ def radiusPenalty(radius, degree = 2):
     return Defunc(inner, ['RP<', None, '>'])
 
 def altitudePenalty(lo, hi, degree = 2):
-    # Penalize encroachment on volumes above/below our volume
+    """Penalize encroachment on volumes above/below our volume"""
     def inner(stats):
         poses = stats['poses']
         above = poses.z - hi
@@ -118,18 +120,21 @@ def calcGravityChange(stats):
     return mass * g * dz / 3600
 
 def batteryReward():
-    # Reward increasing energy
+    """Reward increasing energy"""
     return Defunc(calcBatteryChange, ['BR<', None, '>'])
 
 def gravityReward():
-    # Reward stored gravitational energy
+    """Reward stored gravitational energy"""
     return Defunc(calcGravityChange, ['GR<', None, '>'])
 
 
 def energyPenalty(budget, gravityCoeff = 0.5, degree=2):
-    # Penalize exceeding our energy budget (Wh!), including battery and gravity
-    # budget > 0 means we can lose energy and meet budget
-    # budget < 0 means we must harvest energy to meet budget
+    """
+    Penalize exceeding our energy budget (Wh!), including battery and gravity
+
+    budget > 0 means we can lose energy and meet budget
+    budget < 0 means we must harvest energy to meet budget
+    """
     def inner(stats):
         E_g = calcGravityChange(stats)
         E_b = calcBatteryChange(stats)
@@ -144,7 +149,7 @@ def energyPenalty(budget, gravityCoeff = 0.5, degree=2):
     return Defunc(inner, ['EP<', None, '>'])
 
 def batteryPenalty(threshold, degree = 2):
-    # Penalize going below a certain charge threshold
+    """Penalize going below a certain charge threshold"""
     def inner(stats):
         battery = stats['battery']
         defecit = threshold - battery
@@ -154,8 +159,11 @@ def batteryPenalty(threshold, degree = 2):
     return Defunc(inner, ['BP<', None, '>'])
 
 def throughputReward(weights = None):
-    # Reward higher levels of available throughput
-    # Optionally, weight some users above others
+    """
+    Reward higher levels of available throughput
+
+    Optionally, weight some users above others
+    """
     def inner(stats):
         thru = stats['throughput']
 
@@ -163,15 +171,18 @@ def throughputReward(weights = None):
         if weights is not None:
             rates *= np.array(weights)
 
-        # Eh?
+        # TODO Is this the best way?
         return rates.sum()
 
     return Defunc(inner, ['TR<', None, '>'])
 
 def throughputPenalty(levels, degree = 2):
-    # Penalize under-serving the given levels
-    # Specifically, penalize deficit in mean over window
-    # Maybe we should do min instead?
+    """
+    Penalize under-serving the given levels
+
+    Specifically, penalize deficit in mean over window
+    """
+    # TODO Maybe we should do min instead?
     def inner(stats):
         thru = stats['throughput']
         rates = thru.mean(axis=0)
@@ -184,7 +195,7 @@ def throughputPenalty(levels, degree = 2):
 
 
 def thrustPenalty(hi, penalty = 999):
-    # Discourage using higher than available thrust
+    """Discourage using higher than available thrust"""
     def inner(stats):
         thrust = stats['poses'].thrust
         delta = np.zeros(len(thrust))
@@ -196,9 +207,13 @@ def thrustPenalty(hi, penalty = 999):
     return Defunc(inner, ['TRP<', None, '>'])
 
 def alphaPenalty(lo = -5, hi = 12, penalty = 999):
-    # If we go outside our Angle-of-Attack limits
-    # We start being in non-aerodynamic/rocket mode, which our
-    # equations do NOT work for (hovering reports 0 power use)
+    """
+    Penalize high/low angles of attack.
+    
+    If we go outside our Angle-of-Attack limits
+    We start being in non-aerodynamic/rocket mode, which our
+    equations do NOT work for (hovering reports 0 power use)
+    """
     def inner(stats):
         alpha = stats['poses'].alpha
         delta = np.zeros(len(alpha))
@@ -211,7 +226,7 @@ def alphaPenalty(lo = -5, hi = 12, penalty = 999):
     return Defunc(inner, ['AP<', None, '>'])
 
 def speedPenalty(lo, hi, degree = 2):
-    # Penalize going to fast/slow
+    """Penalize going to fast/slow"""
     def inner(stats):
         poses = stats['poses']
         above = poses.v - hi
@@ -223,23 +238,17 @@ def speedPenalty(lo, hi, degree = 2):
 
     return Defunc(inner, ['VP<', None, '>'])
 
-# The only problem with this is that we'll not reap the benefits past our horizon/factor in the oppurtunity cost
-# Or will we? Probably not. Example: ending point pointing out the radius greatly hinders the next time window
-
-# In any event, this should be nice. We can say SomeOptimizer(fitness = sum([
-#   batteryReward(),
-#   0.2 * gravityReward(),
-#   radiusPenalty(2000),
-#   altitudePenalty(1000, 10000)
-# ])
 
 
 def makeZSchedule(gain, schedule, time):
-    # Make a Z schedule over the specified times (seconds from start!)
-    # Gain is distance from rest altitude to peak altitude
-    # Schedule is (rest, ascend, sustain, descend) times, in seconds
-    # Rest is actually the rest before ascent, and does not include the rest after descent
-    # Will not work for more than one cycle
+    """
+    Make a Z schedule over the specified times (seconds from start!)
+    
+    Gain is distance from rest altitude to peak altitude.
+    Schedule is (rest, ascend, sustain, descend) times, in seconds.
+    Rest is actually the rest before ascent, and does not include the rest after descent.
+    Will not work for more than one cycle
+    """
     time = np.array(time)
     
     rest, ascend, sustain, descend = schedule

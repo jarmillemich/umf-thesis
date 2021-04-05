@@ -5,7 +5,7 @@ import random
 
 from BaseOptimizer import BaseOptimizer, Vector
 
-
+# DEFUNCT See PSOv2
 
 class PSO(BaseOptimizer):
   def __init__(self,

@@ -1,6 +1,11 @@
 import csv
 
 def loadWings(fname):
+    """
+    Load XFOIL data from a CSV file (must have headers removed).
+
+    See files from e.g. airfoiltools.com.
+    """
     with open(fname) as csvfile:
         reader = csv.DictReader(csvfile, delimiter='\t', quoting=csv.QUOTE_NONNUMERIC)
         rows = []

@@ -23,8 +23,6 @@ else:
     earth_mean_radius = 6371008.8 # meters
     g = 9.807 * (earth_mean_radius / (earth_mean_radius + h))**2
 
-    gf = fast_callable(g, vars=[h])
-
     # From https://en.wikipedia.org/wiki/Density_of_air#:~:text=The%20density%20of%20air%20or,atmospheric%20pressure%2C%20temperature%20and%20humidity.
     # Good up to no more than 18 km (validated up to 10 km against the engineering toolbox data, off < 1 g / m^3)
     temp_sea_level = 288.15 # K
@@ -37,33 +35,17 @@ else:
     abs_pressure = pressure_sea_level * (temp / temp_sea_level)**temp_exp
     airDensity = abs_pressure * air_molar_mass / (gas_constant * temp)
 
+gf = fast_callable(g, vars=[h])
+
 def makeFit(inFunc):
-    # We have to sort of make a function out of Cl and Cd...
-    # It only has to be good in the domain so a regression should be fine
+    """Fits a 5th degree polynomial to XFOIL data"""
+    # Note that this only fits the domain, attempting to extrapolate beyond this is a Bad Idea
     a, b, c, d, e, f, alpha = var('a, b, c, d, e, f, α')
     model = a * alpha**5 + b * alpha**4 + c * alpha**3 + d * alpha**2 + e * alpha + f
     data = [(i, inFunc(i)) for i in xsrange(-8,12,0.1)]
     
     sol = find_fit(data, model, parameters=[a,b,c,d,e,f], variables=[alpha])
     return model(a=sol[0].rhs(), b = sol[1].rhs(), c = sol[2].rhs(), d = sol[3].rhs(), e = sol[4].rhs(), f = sol[5].rhs())
-
-def makeFit2(inFunc):
-    # We have to sort of make a function out of Cl and Cd...
-    # It only has to be good in the domain so a regression should be fine
-    a, b, c, d, e, f, alpha = var('a, b, c, d, e, f, α')
-    model = a * alpha**5 + b * alpha**4 + c * alpha**3 + d * alpha**2 + e * alpha + f
-    data = [(i, inFunc(i)) for i in xsrange(-8,12,0.1)]
-    
-    sol = find_fit(data, model, parameters=[a,b,c,d,e,f], variables=[alpha])
-
-    oa = sol[0].rhs().n()
-    ob = sol[1].rhs().n()
-    oc = sol[2].rhs().n()
-    od = sol[3].rhs().n()
-    oe = sol[4].rhs().n()
-    of = sol[5].rhs().n()
-
-    return lambda alpha: oa * alpha**5 + ob * alpha**4 + oc * alpha**3 + od * alpha**2 + oe * alpha + of
 
 
 class Aircraft:
@@ -129,11 +111,12 @@ class Aircraft:
         
         
     def loadWing(self, airfoil):
+        """Loads airfoil data from an XFOIL dat file."""
         self.airfoil = airfoil
         filePath = os.path.join(package_directory, 'contrib', 'wings', airfoil + '.csv')
         self.Cl, self.Cd, self.Cm = loadWings(filePath)
         
-        # Also generate fitted functions so we can operate symbolically
+        # Generate polynomial expressions so we can operate symbolically
         self.ClFit = makeFit(self.Cl)
         self.CdFit = makeFit(self.Cd)
         
@@ -161,7 +144,7 @@ class Aircraft:
         self.L1 = (self.k1 * self.ClFit).function(α,h)
         self.D1 = (self.k1 * CDA).function(α,h)
 
-        # Testing
+        # "Faster" versions of the above
         self.L1f = fast_callable(self.L1, vars=[α,h], domain=RDF)
         self.D1f = fast_callable(self.D1, vars=[α,h], domain=RDF)
     
@@ -169,9 +152,12 @@ class Aircraft:
     ########### Common functions #############
     ##########################################
     
-    # Calculate the solar irradiance values for the provided poses
-    # poses should be a pd.Dataframe, indexed by Datetime, with both 'tilt', 'azimuth', and 'z' (altitude AMSL) Series
     def calcSolarIrradiance(self, pose, latitude, longitude):
+        """
+        Calculate the solar irradiance values for the provided poses.
+        
+        poses should be a pd.Dataframe, indexed by Datetime, with both 'tilt', 'azimuth', and 'z' (altitude AMSL) Series
+        """
         import pandas as pd
         import pvlib
 
@@ -205,24 +191,34 @@ class Aircraft:
             model = 'klucher'
         )
 
-    # Calculates the solar power over time
     def calcSolarPower(self, pose, latitude, longitude):
+        """Calculate the solar power over time."""
         rad = self.calcSolarIrradiance(pose, latitude, longitude)
         # Oettershagen2017Design eq 11
         return rad['poa_global'] * self._solarArea * self._efficiency['solar'] * self._efficiency['mppt']
 
     def calcBatteryCharge(self, poses, solar, bat_capacity_Wh, initial_charge = 0.5, constant_draw = 0):
+        """
+        Computes the battery charge series (Wh).
+        """
         # Only about 500x faster than the old for loop version
         import numpy as np
         import pandas as pd
         # TODO we assume this is constant
         dt = (solar.index[1] - solar.index[0]).total_seconds()
         
+        # Total power draw (W)
         power = poses.power + constant_draw
+
+        # Net power, converting to Wh
         p = np.array(solar - power) * dt / 3600
+
+        # Apply charge/discharge efficiencies
         p[p > 0] *= self._efficiency['bat_charging']
         p[p < 0] *= self._efficiency['bat_discharging']
 
+        # Energy curve
+        # Does NOT account for battery capacity, see loop below
         e = np.cumsum(p) + initial_charge * bat_capacity_Wh - p[0]
 
         erem = e
@@ -242,13 +238,17 @@ class Aircraft:
             prem = prem[cut:]
             erem[:] = np.cumsum(prem) + bat_capacity_Wh
             
+        # Apply capacity
         e[e > bat_capacity_Wh] = bat_capacity_Wh
 
-        
-        #print('weep')
         return pd.Series(e, index = solar.index, dtype=float)
             
     def calcExcessTime(self, battery, constant_draw = 0):
+        """
+        Calculates the excess time.
+
+        Only useful with >= 24 hours of battery data, assumes constant altitude flight
+        """
         import pandas as pd
         # Just use a constant-altitude flight
         coastPower = self.fastGeneralVelocityThrustPower(5)[2]
@@ -260,6 +260,11 @@ class Aircraft:
         return minBattery / (coastPower + constant_draw)
 
     def calcChargeMargin(self, battery):
+        """
+        Calculates the charge margin time.
+        
+        Only useful with >= 24 hours of battery data
+        """
         import pandas as pd
         # Move over to the second day
         secondDay = battery[battery.index[0] + pd.to_timedelta('1day'):]
@@ -275,6 +280,8 @@ class Aircraft:
     ##########################################
     
     def fastStraightVelocityThrustPower(self, θ, α, h):
+        """Determines the velocity, thrust, and power for a straight segment with the given parameters."""
+        
         # Just use regular mathematical functions
         from math import sin, cos, tan, sqrt
         
@@ -310,6 +317,7 @@ class Aircraft:
     ##########################################
         
     def fastTurningVelocityThrustPower(self, r, α, h):
+        """Determines the velocity, thrust, and power for a level arc segment with the given parameters."""
         # Just use regular mathematical functions
         from math import sin, cos, tan, sqrt, asin
 
@@ -340,7 +348,7 @@ class Aircraft:
         return v, thr, p
 
     def bankAngleToTurnRadius(self, alpha, bank, theta = 0, height = 1000):
-        # Convert a bank angle to a turning radius
+        """Convert a bank angle to a turning radius."""
         # Just use regular mathematical functions
         from math import sin, cos, tan, sqrt, asin
 
@@ -359,6 +367,7 @@ class Aircraft:
         return self._mass / (sin(bank * deg2rad) * denomPart)
 
     def turnRadiusToBankAngle(self, alpha, radius, theta = 0, height = 1000):
+        """Convert a turning radius to a bank angle."""
         # Just use regular mathematical functions
         from math import sin, cos, tan, sqrt, asin, pi
         deg2rad = pi / 180
@@ -383,6 +392,7 @@ class Aircraft:
     ## General formulae that work for both ###
     ##########################################
     def fastGeneralVelocityThrustPower(self, alpha, theta = 0, radius = inf, height = 1000):
+        """Determines the velocity, thrust, and power for a either type/combination of segment with the given parameters."""
         # Just use regular mathematical functions
         from math import sin, cos, tan, sqrt, asin
 

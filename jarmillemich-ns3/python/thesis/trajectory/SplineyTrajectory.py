@@ -6,6 +6,7 @@
 from thesis.Trajectory import BaseTrajectory, ExplicitGeneralSegment
 
 def rescale(points, center, scale):
+  """Scale X/Y coordinates around the given center"""
   cx, cy = center
 
   def rescaleSingle(pt):
@@ -29,7 +30,7 @@ def rescale(points, center, scale):
 from math import sin, cos, sqrt, pi
 from thesis.optimize.BaseOptimizer import Vector
 def subSolve(leftInfo, rightInfo, rightFirst):
-  
+  """Solve the bi-arc like curves for the given info"""
   # Which way from the two points the centers are (+/- radian direction)
   rightSide = 1 if rightFirst else -1
   leftSide = -1 if rightFirst else 1
@@ -139,6 +140,7 @@ def subSolve(leftInfo, rightInfo, rightFirst):
   return leftSegment, rightSegment
 
 def solve(left, right, minimumRadius = None):
+  """Solve both left-first and right-first arcs and return the shorter greater than the minimumRadius"""
   a = subSolve(left, right, True)
   b = subSolve(left, right, False)
   
@@ -155,6 +157,17 @@ def solve(left, right, minimumRadius = None):
     return b
 
 class SplineyTrajectory(BaseTrajectory):
+  """
+  Construct our "Spliney" trajectory.
+
+  The trajectory is made up of a series of waypoints, which describe
+  a position and heading. Between each waypoint two circular arcs of
+  equal radius are created, such that the circles are tangent to the
+  headings at their positions, and each other. The parameters of the
+  circles are chosen such that the path is continuous, and such that
+  the shortest path of the two valid solutions is returned. Segments
+  are thus dependent only on the waypoints immediately adjacent.
+  """
   def __init__(
     self,
     waypoints,
@@ -176,7 +189,7 @@ class SplineyTrajectory(BaseTrajectory):
       waypoints = self.doZSchedule(waypoints, zSchedule, craft)
       #print(waypoints)
 
-    # Run a number of iterations and hope fixed point will converge
+    # Run a number of iterations of fixed point (should converge)
     # Or, just one if not doing fixed point
     for it in range(10 if doFixedPoint else 1):
       mappedPoints = rescale(waypoints, center, currentScale)

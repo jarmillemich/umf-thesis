@@ -2,4 +2,7 @@
 cysignals_crash_logs/
 __pycache__/
 *Stats.txt
-out/
+out*/
+arts/
+junk/
+results/

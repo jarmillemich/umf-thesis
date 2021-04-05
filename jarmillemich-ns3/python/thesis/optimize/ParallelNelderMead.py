@@ -90,7 +90,7 @@ class ParallelNelderMead(BaseOptimizer):
         pass
 
       # We can have negative fitness, so we don't want to reward a 0...
-      # Just take the lowest we have and go down a notch, that'll never diverge!
+      # Just take the lowest we have
       return (OP_NONE, min([v.fitness for v in self.vertices]))
   
     # XXX

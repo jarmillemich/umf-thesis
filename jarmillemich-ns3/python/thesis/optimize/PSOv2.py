@@ -99,7 +99,7 @@ class PSO(BaseOptimizer):
 
     self.particles = newParticles
 
-    #print('bestie is', globalScore)
+    #print('best is', globalScore)
     return self.getBest()
 
   def bound(self, pos, vel):
@@ -148,7 +148,7 @@ class PSO(BaseOptimizer):
     # Check best
     newBest = self.getBest()
     if newBest[1] > self.best[1]:
-      #print('new bestie', self.best, newBest, self._fitness(newBest[0]))
+      #print('new best', self.best, newBest, self._fitness(newBest[0]))
       self.best = newBest
 
   def getBest(self):

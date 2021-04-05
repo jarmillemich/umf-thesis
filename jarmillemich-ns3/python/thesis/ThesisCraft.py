@@ -23,7 +23,7 @@ P_payload = (45 + 100) * 0.75       # W
 # Summertime will, of course, be better
 # We are now slightly overestimating Oettershagen (45% MSoC us vs 25% MSoC them), but
 # we are using different wings and calculating the polars is a hassle. Flight power is pretty
-# close (257 W us vs 221 W them). There's probably some error from our garbage integration, as well
+# close (257 W us vs 221 W them). There's probably some error from our coarser integration, as well
 # as our angled panels (theirs are horizontal in early design)
 wingSpan = 21 # m
 wingChord = wingSpan / 20.5 # m
@@ -58,4 +58,5 @@ radioParams = {
     'N0': -174       # See lte-spectrum-value-helper.cc kT_dBm_Hz
 }
 
+# Import this
 craft = Aircraft(mass = mass, wingSpan = wingSpan, e0 = 0.92, chord = wingChord)

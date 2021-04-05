@@ -1,5 +1,7 @@
 import random, math
 
+# CURRENTLY DEFUNCT
+
 def toGray(v):
     return v ^ (v >> 1)
 

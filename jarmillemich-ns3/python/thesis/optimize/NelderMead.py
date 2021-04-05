@@ -1,6 +1,8 @@
 from .BaseOptimizer import BaseOptimizer, Vector, xmap
 import heapq
 
+# DEFUNCT, see ParallelNelderMead instead
+
 class VertexWrapper:
   def __init__(self, vec, fitness):
     self.vec = vec

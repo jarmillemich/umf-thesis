@@ -6,8 +6,8 @@ import pandas as pd
 from sage.all import point, hue, line, show
 
 
-# Various things to help generate and evaluate candidate trajectories
 class Judge:
+    """Various methods to help generate and evaluate candidate trajectories."""
     def __init__(self,
                  scene,
                  craft,
@@ -34,98 +34,99 @@ class Judge:
         self._largerParameters = largerParameters
         self._circleSuppressionLimit = circleSuppressionLimit
         
-    def newChromosome(self):
-        bits = 16 if self._largerParameters else 8
-        parmsPerSegment = 4
-        nAlphas = self._numberOfSegments
-        nParams = self._numberOfSegments * parmsPerSegment + nAlphas
+    # def newChromosome(self):
+    #     bits = 16 if self._largerParameters else 8
+    #     parmsPerSegment = 4
+    #     nAlphas = self._numberOfSegments
+    #     nParams = self._numberOfSegments * parmsPerSegment + nAlphas
         
-        return Chromosome(nParams * bits)
+    #     return Chromosome(nParams * bits)
         
-    def generateChromosome(self, chromo):
-        bits = 16 if self._largerParameters else 8
-        parmsPerSegment = 4
-        nAlphas = self._numberOfSegments
-        nParams = self._numberOfSegments * parmsPerSegment + nAlphas
+    # def generateChromosome(self, chromo):
+    #     bits = 16 if self._largerParameters else 8
+    #     parmsPerSegment = 4
+    #     nAlphas = self._numberOfSegments
+    #     nParams = self._numberOfSegments * parmsPerSegment + nAlphas
         
-        xMin, xMax = self._xRange
-        yMin, yMax = self._yRange
-        zMin, zMax = self._zRange
-        rMin, rMax = self._radiusRange
-        aMin, aMax = self._alphaRange
+    #     xMin, xMax = self._xRange
+    #     yMin, yMax = self._yRange
+    #     zMin, zMax = self._zRange
+    #     rMin, rMax = self._radiusRange
+    #     aMin, aMax = self._alphaRange
         
-        def gp(n, l, h):
-            if bits == 8:
-                return chromo.getReal8(n * bits, lower=l, upper=h)
-            elif bits == 16:
-                return chromo.getReal8(n * bits, lower=l, upper=h)
-            else:
-                raise IndexError('not the right number of bits')
+    #     def gp(n, l, h):
+    #         if bits == 8:
+    #             return chromo.getReal8(n * bits, lower=l, upper=h)
+    #         elif bits == 16:
+    #             return chromo.getReal8(n * bits, lower=l, upper=h)
+    #         else:
+    #             raise IndexError('not the right number of bits')
 
-        def gx(n):
-            return gp(6 * n + 0, xMin, xMax)
+    #     def gx(n):
+    #         return gp(6 * n + 0, xMin, xMax)
 
-        def gy(n):
-            return gp(6 * n + 1, yMin, yMax)
+    #     def gy(n):
+    #         return gp(6 * n + 1, yMin, yMax)
 
-        def gz(n):
-            return gp(6 * n + 2, zMin, zMax)
+    #     def gz(n):
+    #         return gp(6 * n + 2, zMin, zMax)
 
-        def gr(n):
-            return gp(6 * n + 3, rMin, rMax)
+    #     def gr(n):
+    #         return gp(6 * n + 3, rMin, rMax)
 
-        def ga(n, i):
-            return gp(6 * n + 4 + i, aMin, aMax)
+    #     def ga(n, i):
+    #         return gp(6 * n + 4 + i, aMin, aMax)
 
-        circles = [
-            [gx(i), gy(i), gr(i), gz(i)]
-            for i in range(self._numberOfSegments)
-            # Have the ability to suppress extra circles??
-            if gr(i) > self._circleSuppressionLimit
-        ]    
+    #     circles = [
+    #         [gx(i), gy(i), gr(i), gz(i)]
+    #         for i in range(self._numberOfSegments)
+    #         # Have the ability to suppress extra circles??
+    #         if gr(i) > self._circleSuppressionLimit
+    #     ]    
 
-        alphas = [
-            ga(n, i)
-            for n in range(self._numberOfSegments)
-            for i in [0, 1]
-            if gr(n) > self._circleSuppressionLimit
-        ]
+    #     alphas = [
+    #         ga(n, i)
+    #         for n in range(self._numberOfSegments)
+    #         for i in [0, 1]
+    #         if gr(n) > self._circleSuppressionLimit
+    #     ]
 
-        return circles, alphas
+    #     return circles, alphas
         
-    def judgeChromosome(self, chromo, dbg = False):
-        flight = self.chromosomeToFlight(chromo)
-        return self.judgeFlight(flight, dbg = dbg)
+    # def judgeChromosome(self, chromo, dbg = False):
+    #     flight = self.chromosomeToFlight(chromo)
+    #     return self.judgeFlight(flight, dbg = dbg)
     
-    def chromosomeToFlight(self, chromo):
-        wayCircles, alphas = self.generateChromosome(chromo)
+    # def chromosomeToFlight(self, chromo):
+    #     wayCircles, alphas = self.generateChromosome(chromo)
         
-        trajectory = WaycircleTrajectory(wayCircles)
+    #     trajectory = WaycircleTrajectory(wayCircles)
 
-        flight = Flight(
-            self._craft,
-            trajectory,
-            alphas,
-            # TODO bring these in from outside...
-            # From https://www.doubleradius.com/site/stores/baicells/baicells-nova-233-gen-2-enodeb-outdoor-base-station-datasheet.pdf
-            #xmitPower = 30,
-            #B = 5e6
-            # From https://yatebts.com/products/satsite/
-            # xmitPower = 43,
-            # B = 5e6,
-            # From the Zeng paper
-            #xmitPower = 10,
-            #B = 1e6
-            # To match NS3 defaults
-             xmitPower = 30,
-             B = 180e3 * 25, # 25 180kHz Resource Blocks, = 4.5 MHz
-            # See lte-spectrum-value-helper.cc kT_dBm_Hz
-            N0 = -174,
+    #     flight = Flight(
+    #         self._craft,
+    #         trajectory,
+    #         alphas,
+    #         # TODO bring these in from outside...
+    #         # From https://www.doubleradius.com/site/stores/baicells/baicells-nova-233-gen-2-enodeb-outdoor-base-station-datasheet.pdf
+    #         #xmitPower = 30,
+    #         #B = 5e6
+    #         # From https://yatebts.com/products/satsite/
+    #         # xmitPower = 43,
+    #         # B = 5e6,
+    #         # From the Zeng paper
+    #         #xmitPower = 10,
+    #         #B = 1e6
+    #         # To match NS3 defaults
+    #          xmitPower = 30,
+    #          B = 180e3 * 25, # 25 180kHz Resource Blocks, = 4.5 MHz
+    #         # See lte-spectrum-value-helper.cc kT_dBm_Hz
+    #         N0 = -174,
             
-        )
-        return flight
+    #     )
+    #     return flight
         
     def judgeFlight(self, flight, dbg = False):
+        """Old version of flight fitness function."""
         #times, result = self._scene.evaluateCrafts([flight])
 
         # TODO define elsewhere
@@ -170,6 +171,7 @@ class Judge:
         return score, thru, mSoc, flight.cycleTime, positions, thruPlot
 
     def flightStats(self, flight, times = None, bat_Wh_cap = 15.5 * 650, constant_draw = 109, extended = False, initial_charge = 0.5):
+        """Compute flight statistics (poses, energy/power figures) for the given times and conditions."""
         import pandas as pd
 
         if times is None:
@@ -208,8 +210,8 @@ class Judge:
         return ret
         
 
-    # Some info on trajectory
     def displayFlightTrajectoryInfo(self, flight, render = True, threed = False):
+        """Display info and render trajectory."""
         T0 = pd.to_datetime('2020-07-01T00')
         dt = pd.to_timedelta(int(flight.cycleTime), 'S')
         times = pd.date_range(start=T0, end=T0 + dt, freq='30S', tz='America/Detroit')
@@ -250,6 +252,7 @@ class Judge:
         print()
         
     def displayFlightPower(self, flight, bat_Wh_cap, P_payload, start = '2020-07-01T08', end = '2020-07-03T08', legend = False, savename=None):
+        """Calculate and display/plot flight power statistics"""
         from matplotlib.dates import DateFormatter
         import matplotlib.pyplot as plt
         print(' Power info')
@@ -279,8 +282,7 @@ class Judge:
         (poses.power + P_payload).rolling(64, center=True).mean().plot(color='darkgreen', linestyle=(0, (8,2)))
 
         
-
-        # XXX Thunking something out, not needed
+        # A quick look at the min/max power use
         totPower = (poses.power + P_payload).rolling(64, center=True).mean()
         print('Power range is %.2f to %.2f W' % (totPower.min(), totPower.max()))
 
@@ -291,6 +293,7 @@ class Judge:
 
         if legend: plt.legend(['Solar', 'Propulsion', 'Total'], loc='upper center', bbox_to_anchor=(0.4, 1))
 
+        # Show gravitational potential, if there is any
         if any(E_g > 0):
             EgMax = E_g.max()
             EgMaxRatio = EgMax / bat_Wh_cap
@@ -314,7 +317,7 @@ class Judge:
 
         if legend: plt.legend(['Battery', 'Altitude'])
 
-        # Note, we take after 6 hours to get past the initial charge (really only applies to > 24h timespan)
+        # Note, we take at least 6 hours to get past the initial charge impact (really only applies to > 24h timespan)
         mSocStart = pd.to_datetime(start) + pd.offsets.Hour(6)
         if mSocStart < pd.to_datetime(end):
             print('mSoc = %.2f%%' % (battery[mSocStart:].min() / bat_Wh_cap * 100))
@@ -329,6 +332,7 @@ class Judge:
         print()
 
     def displayFlightAltitudeThroughputInfo(self, flight, start = '2020-07-01T08', end = '2020-07-03T08'):
+        """Displays altitude vs throughput plot."""
         import matplotlib.pyplot as plt
         print(' Throughput (estimated) and altitude')
         print('=' * 80)
@@ -368,16 +372,12 @@ class Judge:
         agg.mean(1).rolling(window=int(10), center=True).mean().plot()
         agg.max(1).rolling(window=int(10), center=True).mean().plot()
 
-        # Eh
-        plt.figure()
-        poses.v.round(1).plot()
-
-        # Gimpy 4 hour rolling mean?
-        #agg.mean(1).rolling(window=int(4*2*60), center=True).mean().plot(figsize=(18,10))
-
-        #return agg
-
     def runNS3Simulation(self, flight, start = '2020-07-01T08', end = None, burstArrivals = 1, burstLength = 1, upload = True, download = False):
+        """
+        Runs an NS3 simulation of this flight, one cycle.
+        
+        Except for short runs, it is better to use the runner*.py files.
+        """
         # By default, run a single cycle
         if end is None:
             end = pd.to_datetime(start) + pd.offsets.Second(int(flight.cycleTime))

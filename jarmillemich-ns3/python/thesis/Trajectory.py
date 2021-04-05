@@ -1,5 +1,6 @@
-# a class for representing our "Waycircle" trajectories
-# along with supporting utilities (including sage utils)
+# This module contains many (many) different approaches for
+# representing trajectories, not all of them valid
+
 from sage.all import (
     vector, sqrt, atan2, line, arc,
     cos, sin, n, minimize, find_root,
@@ -10,9 +11,13 @@ from sage.all import (
 from math import inf
 
 
-# Get tangent points for circles
-# http://www.ambrsoft.com/TrigoCalc/Circles2/Circles2Tangent_.htm ...
+
 def getTangentWithPoint(x0, y0, r0, x1, y1, r1, xp, yp):
+    """
+    Get tangent points for circles
+    
+    See http://www.ambrsoft.com/TrigoCalc/Circles2/Circles2Tangent_.htm
+    """
     # In the symbology of that page
     a, b, c, d = x0, y0, x1, y1
     
@@ -135,15 +140,6 @@ class LineSegment:
             self.z0 + dz * (t - t0) / dt,
         )
     
-    
-    def toSimCode(self, craft, alpha):
-        v, t, p = self.velocityThrustPower(craft, alpha)
-        return 'enbMobility->addLineSegment(Vector(%.2f, %.2f, %.2f), Vector(%.2f, %.2f, %.2f), %.2f);' % (
-            self.x0, self.y0, self.z0,
-            self.y1, self.y1, self.z1,
-            v
-        )
-    
     def toSim(self, craft, alpha):
         from ns.core import Vector
         from ns.mobility import PathMobilityModelSegments
@@ -156,22 +152,6 @@ class LineSegment:
             v
         )
     
-
-    # Get the optimal (alpha, power) for a given craft
-    def optimalAlpha(self, craft):
-        powerFun = craft.straightPower(θ = self.theta, a = 0)
-        alpha = minimize(powerFun, [2])[0]
-        
-        pwr = n(powerFun(α=alpha))
-        if pwr < 0:
-            print(self.z0, self.z1, self.theta, alpha, pwr)
-            # Likely we are descending
-            # Find a 0-power alpha instead
-            # TODO this might cause what those who know call a "stall", investigate
-            show(plot(powerFun, 0, 15))
-            alpha = find_root(powerFun, 0, 15)
-        
-        return alpha
     
     def velocityThrustPower(self, craft, alpha):
         # Take our average altitude/height
@@ -338,14 +318,6 @@ class ArcSegment:
             self.y + self.r * sin(dθdt * (t - t0) + self.theta),
             self.z
         )
-    
-    def toSimCode(self, craft, alpha):
-        v, t, p = self.velocityThrustPower(craft, alpha)
-        return 'enbMobility->addArcSegment(Vector(%.2f, %.2f, %.2f), %.2f, %.2f, %.2f, %.2f);' % (
-            self.x, self.y, self.z,
-            self.r, self.theta, self.dtheta,
-            v
-        )
 
     def toSim(self, craft, alpha):
         from ns.core import Vector
@@ -358,23 +330,10 @@ class ArcSegment:
             v
         )
     
-    # Get the optimal (alpha, power) for a given craft
-    def optimalAlpha(self, craft):
-        powerFun = craft.turningPower(r = self.r)
-        alpha = minimize(powerFun, [2])[0]
-        return alpha
     
-    # Gets the kinematic components of the flight given the craft and angle
     def velocityThrustPower(self, craft, alpha):
-        #
-        #         v = n(craft.turningVelocity(r = self.r, α=alpha))
-        #         t = n(craft.turningThrust(r = self.r, α=alpha))
-        #         p = n(craft.turningPower(r = self.r, α=alpha))
-                
-        #         return v, t, p
         return craft.fastTurningVelocityThrustPower(self.r, alpha, self.z)
 
-    ## Experimental
     def toPoses(self, times, t0, v, alpha, thrust = 0, power = 0, df = None):
         import pandas as pd
         import numpy as np
@@ -505,31 +464,12 @@ def pointToPointArc(p0, p1, radius):
     return (cx, cy), (theta, dtheta)
 
 # Rotate some vectors in R3
-# x y z is right down forward
-# roll is right, yaw is right, pitch is up
-def rotate3(x, y, z, roll, yaw, pitch):
-  # From https://en.wikipedia.org/wiki/Rotation_matrix#General_rotations
-  # But vectorized
-  from numpy import sin, cos
-  ca = cos(roll)
-  sa = sin(roll)
-  cb = cos(yaw)
-  sb = sin(yaw)
-  cc = cos(pitch)
-  sc = sin(pitch)
-  
-  xx = x * ca * cb + y * (ca * sb * sc - sa * cc) + z * (ca * sb * cc + sa * sc)
-  yy = x * sa * cb + y * (sa * sb * sc + ca * cc) + z * (sa * sb * cc - ca * sc)
-  zz = x * -sb + y * cb * sc + z * cb * cc
-  
-  return xx, yy, zz
-
-# Rotate some vectors in R3
 # Input xyz is forward, left, down
 # order is pitch, roll, yaw
 # all angles are CCW
 # Output xyz is in east north down
 def rotate4(x, y, z, yaw, roll, pitch):
+  """Rotate (x, y, z) coords in FLD by the specified angles"""
   # From https://en.wikipedia.org/wiki/Rotation_matrix#General_rotations
   # But vectorized
   from numpy import sin, cos
@@ -562,6 +502,7 @@ def rotate4(x, y, z, yaw, roll, pitch):
   return xx, yy, zz
 
 class GeneralSegment:
+    """Represents a general circular arc segment, ascending or descending."""
     def __init__(self, p0, p1, radius = inf, loops = 0):
         from math import pi, sin, cos, atan2, sqrt
 
@@ -588,16 +529,9 @@ class GeneralSegment:
             #self.groundLength = 2 * pi * self.radius
             directLength = sqrt(dx ** 2 + dy ** 2)
 
-            # Nope
-
-            #self.radius = radius = (self.radius + signUp(self.radius)) * directLength / 2
-            #print('radius ends up ', self.radius)
 
             if abs(radius) * 2 < directLength:
                 raise TypeError('Radius is too small %.2f < %.2f' % (abs(radius), directLength/2))
-
-            
-            
 
             # Find our center
 
@@ -649,6 +583,7 @@ class GeneralSegment:
         self.ascentAngle = atan2(self.z1 - self.z0, self.groundLength)
     
     def _renderPieces(self, n = 50):
+        """Generate points along this segment"""
         import numpy as np
         dices = np.arange(n+1) / n
         
@@ -671,19 +606,8 @@ class GeneralSegment:
 
         return x.tolist(), y.tolist(), z.tolist()
 
-
-
-        # x, y, r, s1, s2, z = self.cx, self.cy, self.radius, self.theta, self.theta + self.dtheta, self.z0
-        # dt = (s2 - s1) / n
-        # xdata = [x + r * cos(s1 + t * dt) for t in range(n + 1)]
-        # ydata = [y + r * sin(s1 + t * dt) for t in range(n + 1)]
-
-        # dzdn = self.dz / n
-        # zdata = [z + dzdn * t for t in range(n + 1)]
-
-        # return xdata, ydata, zdata
-
     def render(self, n = 50, **kwargs):
+        """3D Rendering of this segment"""
         xdata, ydata, zdata = self._renderPieces(n)
 
         return line([
@@ -692,6 +616,7 @@ class GeneralSegment:
         ], **kwargs)
 
     def renderTop(self, n = 50, **kwargs):
+        """XY Projection rendering of this segment"""
         #return arc((self.x0, self.y0), self.radius, self.radius, 0, (self.theta, self.theta + self.dtheta), **kwargs)
         xdata, ydata, zdata = self._renderPieces(n)
 
@@ -701,6 +626,7 @@ class GeneralSegment:
         ], **kwargs)
 
     def renderSide(self, xy = 'x', n = 50, **kwargs):
+        """Render side view of this segment, from x or y direction"""
         xdata, ydata, zdata = self._renderPieces(n)
 
         if xy == 'x':
@@ -715,6 +641,7 @@ class GeneralSegment:
             ], **kwargs)
 
     def toSim(self, craft, alpha):
+        """Generate an NS3 PathMobilityModel segment for this segment"""
         from ns.core import Vector
         from ns.mobility import PathMobilityModelSegments
         
@@ -733,13 +660,14 @@ class GeneralSegment:
                 v
             )
     
-    # Gets the kinematic components of the flight given the craft and angle
     def velocityThrustPower(self, craft, alpha):
+        """Gets the kinematic components of the flight given the craft and angle"""
         # Just take mean altitude (appx)
         mz = (self.z0 + self.z1) / 2
         return craft.fastGeneralVelocityThrustPower(alpha, theta=self.ascentAngle, radius=self.radius, height=mz)
 
     def toPosesTest(self, times, t_at, v, alpha, thrust = 0, power = 0, craft = None):
+        """Generate poses for this segment at the particular times"""
         import pandas as pd
         import numpy as np
         import math
@@ -757,8 +685,7 @@ class GeneralSegment:
         dices = times[np.bitwise_and(times >= t_at, times < t_at + dt)] - t_at
 
         if dt == 0:
-            #print('something went wrong', self.length, v, self.dz, self.p0, self.p1)
-            # Oh well
+            # This is a 0-length segment, but let it through anyway
             return dt, np.array([[]]*9)
 
         dzdt = self.dz / dt
@@ -801,7 +728,7 @@ class GeneralSegment:
                 vPitch = -sign * (math.atan2(self.dz, self.length) + alpha * deg2rad)
                 
                 roll = craft.turnRadiusToBankAngle(alpha, self.radius, height = self.z0 + self.dz / 2, theta = math.atan2(self.dz, self.length)) * deg2rad
-                #print('eep', self.z0 + self.dz / 2, math.atan2(self.dz, self.length), roll, roll * rad2deg)
+                
                 # FLD = END
                 # pitch, roll, yaw
                 # Reverse roll because we want CCW here but do CW everywhere else
@@ -830,9 +757,8 @@ class GeneralSegment:
                 self.z0 + dices * dzdt,
                 np.full(len(dices), v),
                 # Tilt Azimuth
-                #np.full(len(dices), -alpha),
-                #(sign * (90 - np.arctan2(np.cos(thetas), -np.sin(thetas)) * rad2deg)) % 360,
-                solarTilt * rad2deg, solarAzimuth * rad2deg,
+                solarTilt * rad2deg,
+                solarAzimuth * rad2deg,
                 # Thrust power
                 np.full(len(dices), thrust),
                 np.full(len(dices), power),
@@ -842,6 +768,7 @@ class GeneralSegment:
 
 # Can only handle curves, but easier to use (hopefully)
 class ExplicitGeneralSegment(GeneralSegment):
+    """Construct a GeneralSegment from start, end, center points and theta range"""
     def __init__(self, p0, p1, center, thetaRange):
         from math import pi, sin, cos, atan2, sqrt
 
@@ -887,8 +814,8 @@ class ExplicitGeneralSegment(GeneralSegment):
 ##### Helpers for building trajectory ####
 ##########################################
     
-# Angle between two vectors (smallest?)
 def angleBetween(a, b):
+    """Angle between two vectors (smallest?)"""
     return atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1])
 
 def getDir(before, at, after):
@@ -908,7 +835,6 @@ def getDir(before, at, after):
     
     return angle > 0
 
-# We need the next two left/right waycircles as well...
 def getTangentLineBetween(before, left, right, after):
     cwLeft = getDir(before, left, right)
     cwRight = getDir(left, right, after)
@@ -934,38 +860,70 @@ def getTangentLineBetween(before, left, right, after):
             l1, l2 = l2, l1
         return l1
     else:
-        raise Exception("Oops")
+        raise Exception("Invalid arguments")
     
-##########################################
-######### The actual trajectory ##########
-##########################################
+def ArcSegmentFromCenterAndPoints(center, left, right, flip = False):
+    from math import pi, atan2
+    # Assume that left and right are equidistant from center
+    radius = sqrt((center[0] - left[0])**2 + (center[1] - left[1])**2)
+    leftDelta = (
+        left[0] - center[0],
+        left[1] - center[1]
+    )
+    rightDelta = (
+        right[0] - center[0],
+        right[1] - center[1]
+    )
+    theta = atan2(leftDelta[1], leftDelta[0])
+    # Take small angle, and invert to get outside angle
+    dTheta =  angleBetween(leftDelta, rightDelta)
+    if dTheta < 0: dTheta += 2 * pi
+    if flip: dTheta -= 2 * pi
+    return ArcSegment(*center, radius, theta, dTheta)
+
+############################################
+######### The actual trajectories ##########
+############################################
 
 class BaseTrajectory:
+    """Base trajectory class, inherit from this"""
     def __init__(self, pieces):
         self.pieces = pieces
 
-    # Create a 3d rendering of the entire path (Sagemath)
     def render(self, **kwargs):
+        """Create a 3d rendering of the entire path (Sagemath)"""
         return sum([p.render(**kwargs) for p in self.pieces])
 
     def renderColored(self, **kwargs):
+        """Create a 3d rendering of the entire path (Sagemath), cycling colors"""
         colors = ['red', 'magenta', 'green', 'blue']
         renders = [self.pieces[i].render(**kwargs, color=colors[i % len(colors)]) for i in range(len(self.pieces))]
         return sum(renders)
 
     # 2d renderings
     def renderTop(self, **kwargs):
+        """Render top of all segments"""
         return sum([p.renderTop(**kwargs) for p in self.pieces])
 
     def renderSide(self, **kwargs):
+        """Render side of all segments"""
         return sum([p.renderSide(**kwargs) for p in self.pieces])
     
-    # Length of our entire path
     def length(self):
+        """Length of our entire path"""
         return sum([p.length for p in self.pieces])
 
 
 class WaycircleTrajectory(BaseTrajectory):
+    """
+    The Waycircle Trajectory
+
+    Cyclical trajectory where wayCircles defines the centers and radii of the waycircles.
+    The craft will fly around each waycircle at the specified radius, and then head to the next.
+    The trajectory automatically figures out which side of the waycircle the craft needs
+    to fly on for everything to be continuous.
+    Waycircles are specified as tuples of (x, y, z, radius).
+    """
     def __init__(self, wayCircles):
         if len(wayCircles) < 2:
             raise IndexError('You should probably have at least 2 wayCircles')
@@ -977,7 +935,6 @@ class WaycircleTrajectory(BaseTrajectory):
                 if wayCircles[i][2] == wayCircles[i + 1][2]:
                     # Hopefully fine...
                     wayCircles[i][2] += 0.01
-                    #raise TypeError('Sorry, adjacent radii must be distinct!')
         
         pieces = self.buildTrajectory(wayCircles)
         super().__init__(pieces)
@@ -1026,6 +983,9 @@ class WaycircleTrajectory(BaseTrajectory):
         
 # Waycircle trajectory, but hopefully more amenable to stochastic methods and a 24-hour period
 class ClampedVectorTrajectory(BaseTrajectory):
+    """
+    Experimental/unused trajectory
+    """
     def __init__(self, vec, craft, startPosition = (0, 0, 2000), time_limit = 86400):
         from math import sqrt, tan
         # Something to loop easier: https://stackoverflow.com/a/5389547
@@ -1193,24 +1153,7 @@ class CircleTrajectory(BaseTrajectory):
             ArcSegment(*center, radius, phase, (-1 if reverse else 1) * 2 * pi)
         ])
 
-def ArcSegmentFromCenterAndPoints(center, left, right, flip = False):
-    from math import pi, atan2
-    # Assume that left and right are equidistant from center
-    radius = sqrt((center[0] - left[0])**2 + (center[1] - left[1])**2)
-    leftDelta = (
-        left[0] - center[0],
-        left[1] - center[1]
-    )
-    rightDelta = (
-        right[0] - center[0],
-        right[1] - center[1]
-    )
-    theta = atan2(leftDelta[1], leftDelta[0])
-    # Take small angle, and invert to get outside angle
-    dTheta =  angleBetween(leftDelta, rightDelta)
-    if dTheta < 0: dTheta += 2 * pi
-    if flip: dTheta -= 2 * pi
-    return ArcSegment(*center, radius, theta, dTheta)
+
 
 class BowtieTrajectory(BaseTrajectory):
     '''Bowtie, or figure 8, trajectory'''
@@ -1311,11 +1254,11 @@ class SimpleLadderTrajectory(BaseTrajectory):
         return sum([p.render(**kwargs) for p in self.pieces[:cutoff]])
 
     def renderSideFancy(self, cutoff, **kwargs):
+        """Renders the first few segments of the side view to demonstrate the altitude pattern"""
         ret = [piece.renderSide(**kwargs) for piece in self.pieces[:cutoff]]
 
         ret.append(self.pieces[cutoff].renderSide(linestyle='--', **kwargs))
 
-        # Eh
         ret.append(self.pieces[-1].renderSide(**kwargs))
 
         return sum(ret)
@@ -1386,8 +1329,10 @@ class DTrajectory(BaseTrajectory):
             ])
 
 
-# Freestyling modified circular trajectory (not smooth!)
 class DeltaThetaZScheduleTrajectory(BaseTrajectory):
+    """
+    Experimental/unused trajectory. NOT SMOOTH
+    """
     def __init__(self, craft, controlPoints, initialTheta = 0, initialRadius = 1000, initialHeight = 1000, zSchedule=[6*3600]*4, gain = 0):
         from math import sin, cos, sqrt, tan, atan2
         pieces = []
@@ -1507,6 +1452,12 @@ class DeltaThetaZScheduleTrajectory(BaseTrajectory):
 
 
 class ImperativeTrajectory(BaseTrajectory):
+    """
+    Trajectory made up of commands.
+
+    Trajectory like the Bolandhemmat paper, where each segment is defined by
+    the AoA, bank angle, and altitude change.
+    """
     def __init__(self, craft, startPosition, startHeading, commands, commandDuration = 20):
         # Pros: direct(ish) control of aircraft attitude/speed and total duration
         # Cons: high impact of earlier segments, must be manually constrained

@@ -5,6 +5,7 @@ import tqdm
 
 
 class Vector:
+  """A vector of arbitrary length, for use in the optimzers"""
   def __init__(self, pos):
     self.pos = [float(e) for e in pos]
 
@@ -108,7 +109,8 @@ class Vector:
     # Pass through index access to array
     self.pos[key] = value
 
-# Boo hoo https://medium.com/@yasufumy/python-multiprocessing-c6d54107dd55
+# To allow for multiprocessing, Python/multiprocessing seems not to allow lambdas for this natively :(
+# https://medium.com/@yasufumy/python-multiprocessing-c6d54107dd55
 _func = None
 def worker_init(func):
   global _func
@@ -129,6 +131,12 @@ def tmap(func, iterable, processes=None, pool=None, leave=True):
       return list(tqdm.auto.tqdm(p.imap(worker, iterable), total=len(iterable), leave=leave))
 
 class BaseOptimizer:
+  """
+  Base optimizer class.
+  
+  Provides facilities for multi-threaded fitness evaluation and
+  related synchronization.
+  """
   def __init__(self, fitness, processes=1):
     self.__rawFitness = fitness
     self._fitness = lambda x: self.wrapFitness(fitness, x)
@@ -136,7 +144,7 @@ class BaseOptimizer:
     
   def iterate(self, pool = None):
     state = self.prepare()
-    # ONLY the fitness evaluation is multi-threaded, to save us from weird state things
+    # ONLY the fitness evaluation is multi-threaded, to keep things simple
     fitnesses = self.evaluateGeneration(state, pool=pool)
     self.update(fitnesses)
 
@@ -147,6 +155,7 @@ class BaseOptimizer:
 
     # This is a silly "convergence" criteria but we'll go with it
     # Mostly to keep NM from shrinking forever and wasting time
+    # TODO hardcoded
     max_evals = 128 * 1024
 
     # Use a single pool, this saves several hundred ms per loop
@@ -189,7 +198,7 @@ class BaseOptimizer:
       return -9e9
 
   def evaluateGeneration(self, state, pool = None):
-    # Compute the fitness for each vector
+    """Compute the fitness for each vector"""
     individuals = self.getIndividuals()
 
     if self._processes > 1 or pool is not None:
